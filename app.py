@@ -40,7 +40,7 @@ def resource_path(*parts):
 # ── App version + update check (Tier 1: notify-only) ──────────────────────────
 # APP_VERSION is the single source of truth for "which build is this". Bump it on
 # every release and set the SAME value as "version" in the hosted manifest below.
-APP_VERSION = '2026.07.21'
+APP_VERSION = '2026.07.22'
 
 # URL of the hosted update manifest — a tiny JSON file you control. Leave EMPTY to
 # disable the update check entirely (it becomes a silent no-op). The manifest is
@@ -141,7 +141,7 @@ def check_update():
     is transmitted; this is an outbound GET for a version number only.
     """
     result = {'current': APP_VERSION, 'latest': None, 'updateAvailable': False,
-              'downloadUrl': None, 'notes': None}
+              'downloadUrl': None, 'notes': None, 'error': None}
     if not UPDATE_MANIFEST_URL:
         return jsonify(result)   # feature not configured yet → silent no-op
     try:
@@ -155,7 +155,12 @@ def check_update():
         result['notes'] = manifest.get('notes')
         result['updateAvailable'] = _update_available(APP_VERSION, result['latest'])
     except Exception as e:
-        # Offline / unreachable / malformed manifest must not nag the user.
+        # Offline / unreachable / malformed manifest must not nag the user — the UI
+        # ignores this field entirely — but a maintainer hitting this endpoint
+        # directly needs the real reason, since nothing configures `logging` in this
+        # app (so logger.info() below goes nowhere) and a frozen Windows build with
+        # console=False has no console to print to either.
+        result['error'] = '%s: %s' % (type(e).__name__, e)
         logger.info('update check skipped: %s', e)
     return jsonify(result)
 
