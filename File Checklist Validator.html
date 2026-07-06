@@ -1,0 +1,2322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BC File Approval Checker</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-light: #eff6ff;
+    --blue-border: #bfdbfe;
+    --green: #16a34a;
+    --green-light: #f0fdf4;
+    --green-border: #bbf7d0;
+    --red: #dc2626;
+    --red-light: #fef2f2;
+    --red-border: #fecaca;
+    --yellow: #d97706;
+    --yellow-light: #fffbeb;
+    --yellow-border: #fde68a;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    height: 60px;
+    gap: 16px;
+  }
+
+  header .logo {
+    width: 32px;
+    height: 32px;
+    background: var(--blue);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--gray-900);
+  }
+
+  header .subtitle {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-left: auto;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Steps indicator */
+  .steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 32px;
+  }
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+  }
+
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--gray-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-400);
+    background: white;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  .step-label {
+    font-size: 13px;
+    color: var(--gray-400);
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .step-line {
+    flex: 1;
+    height: 2px;
+    background: var(--gray-200);
+    margin: 0 4px;
+    transition: all 0.2s;
+  }
+
+  .step.active .step-num {
+    border-color: var(--blue);
+    background: var(--blue);
+    color: white;
+  }
+
+  .step.active .step-label { color: var(--blue); }
+
+  .step.done .step-num {
+    border-color: var(--green);
+    background: var(--green);
+    color: white;
+  }
+
+  .step.done .step-label { color: var(--green); }
+  .step.done + .step-line { background: var(--green); }
+
+  /* Cards */
+  .card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: 4px;
+  }
+
+  .card-subtitle {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-bottom: 20px;
+  }
+
+  /* Pills / toggles */
+  .pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .pill {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1.5px solid var(--gray-200);
+    background: white;
+    font-size: 13px;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    font-weight: 500;
+    user-select: none;
+  }
+
+  .pill:hover { border-color: var(--blue); color: var(--blue); }
+
+  .pill.selected {
+    background: var(--blue-light);
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+
+  /* Section labels */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+
+  .section-label:first-child { margin-top: 0; }
+
+  /* Drop zone */
+  #dropzone {
+    border: 2px dashed var(--gray-300);
+    border-radius: var(--radius-lg);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+  }
+
+  #dropzone:hover, #dropzone.dragover {
+    border-color: var(--blue);
+    background: var(--blue-light);
+  }
+
+  #dropzone .dz-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.6;
+  }
+
+  #dropzone h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: 6px;
+  }
+
+  #dropzone p {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-bottom: 16px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 20px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--blue);
+    color: white;
+  }
+
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+  .btn-secondary {
+    background: white;
+    color: var(--gray-700);
+    border: 1.5px solid var(--gray-300);
+  }
+
+  .btn-secondary:hover { border-color: var(--gray-400); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--blue);
+    border: 1.5px solid var(--blue);
+  }
+
+  .btn-outline:hover { background: var(--blue-light); }
+
+  #fileInput { display: none; }
+
+  .file-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--green-light);
+    border: 1px solid var(--green-border);
+    color: var(--green);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 12px;
+  }
+
+  /* Navigation buttons */
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+  }
+
+  /* Results */
+  .summary-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .summary-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .summary-chip .num {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .chip-green { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
+  .chip-red { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+  .chip-yellow { background: var(--yellow-light); color: var(--yellow); border: 1px solid var(--yellow-border); }
+  .chip-gray { background: var(--gray-100); color: var(--gray-600); border: 1px solid var(--gray-200); }
+
+  /* Checklist items */
+  .checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background 0.1s;
+  }
+
+  .checklist-item:last-child { border-bottom: none; }
+  .checklist-item:hover { background: var(--gray-50); }
+
+  .item-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gray-500);
+    flex-shrink: 0;
+  }
+
+  .item-status {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+
+  .item-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--gray-800);
+  }
+
+  .item-name .matched-file {
+    font-size: 11px;
+    color: var(--gray-400);
+    margin-top: 1px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+
+  .item-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .badge-optional {
+    background: var(--gray-100);
+    color: var(--gray-500);
+  }
+
+  .status-found { color: var(--green); }
+  .status-missing { color: var(--red); }
+  .status-not-required { color: var(--gray-300); }
+
+  .item-found .item-name { color: var(--gray-800); }
+  .item-missing .item-name { color: var(--red); font-weight: 500; }
+  .item-not-required .item-name { color: var(--gray-400); text-decoration: line-through; }
+
+  /* Section headers in results */
+  .checklist-section {
+    padding: 8px 16px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-100);
+  }
+
+  /* Unmatched files */
+  .unmatched-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .unmatched-item {
+    font-size: 12px;
+    color: var(--gray-500);
+    padding: 4px 12px;
+    background: var(--gray-50);
+    border-radius: 6px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+
+  .status-warning { color: var(--yellow); }
+  .item-out-of-order .item-name { color: var(--gray-800); }
+  .badge-warning { background: var(--yellow-light); color: var(--yellow); border: 1px solid var(--yellow-border); }
+
+  /* Print styles */
+  @media print {
+    header { position: static; }
+    .btn, .steps, #step1, #step2, .nav-row { display: none !important; }
+    .container { padding: 0; max-width: 100%; }
+    .card { border: 1px solid #ccc; }
+  }
+
+  /* Hidden state */
+  .step-page { display: none; }
+  .step-page.active { display: block; }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .alert-info {
+    background: var(--blue-light);
+    color: #1e40af;
+    border: 1px solid var(--blue-border);
+  }
+
+  /* Questionnaire (intake decision tree) */
+  .q-progress {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+    margin-bottom: 8px;
+  }
+
+  #q-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--gray-900);
+    line-height: 1.45;
+    margin-bottom: 4px;
+  }
+
+  .q-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .q-opt {
+    text-align: left;
+    padding: 13px 18px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius);
+    background: white;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray-800);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .q-opt:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+  .q-opt .q-opt-hint { font-weight: 400; color: var(--gray-400); font-size: 12px; }
+
+  .q-uncertain { color: var(--yellow); font-size: 11px; font-weight: 600; margin-left: 8px; }
+
+  /* Bank statement review modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-box {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    max-width: 460px;
+    width: calc(100% - 40px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+  }
+  .modal-counter {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+    margin-bottom: 10px;
+  }
+  .modal-prog-track {
+    height: 4px;
+    background: var(--gray-100);
+    border-radius: 2px;
+    margin-bottom: 24px;
+  }
+  .modal-prog-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 2px;
+    transition: width 0.25s;
+  }
+  .modal-type-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 9px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    border: 1px solid transparent;
+  }
+  .modal-amount {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .modal-desc {
+    font-size: 15px;
+    color: var(--gray-800);
+    font-weight: 500;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+  .modal-meta {
+    font-size: 12px;
+    color: var(--gray-400);
+    margin-bottom: 28px;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+  }
+  .modal-actions .btn { flex: 1; justify-content: center; font-size: 14px; }
+  .btn-known  { background: var(--green); color: white; }
+  .btn-known:hover  { background: #15803d; }
+  .btn-unknown { background: var(--red); color: white; }
+  .btn-unknown:hover { background: #b91c1c; }
+</style>
+</head>
+<body>
+
+<!-- Update-available banner (Tier 1 notify-only; filled by checkForUpdate()).
+     Hidden until the local backend confirms a newer build exists. -->
+<div id="update-banner" style="display:none;align-items:center;gap:12px;padding:10px 16px;background:#0b5cad;color:#fff;font:600 13px -apple-system,system-ui,sans-serif;">
+  <span id="update-banner-text" style="flex:1;"></span>
+  <a id="update-banner-link" href="#" target="_blank" rel="noopener"
+     style="color:#fff;text-decoration:underline;white-space:nowrap;">Download the latest version</a>
+  <button id="update-banner-dismiss" aria-label="Dismiss"
+     style="background:transparent;border:none;color:#fff;font-size:16px;cursor:pointer;line-height:1;">&times;</button>
+</div>
+
+<!-- Bank statement transaction review modal -->
+<div class="modal-overlay" id="bank-review-overlay">
+  <div class="modal-box">
+    <div class="modal-counter" id="bank-modal-counter">Transaction 1 of 1</div>
+    <div class="modal-prog-track">
+      <div class="modal-prog-fill" id="bank-modal-prog" style="width:0%"></div>
+    </div>
+    <div class="modal-type-badge" id="bank-modal-badge"></div>
+    <div class="modal-amount" id="bank-modal-amount"></div>
+    <div class="modal-desc" id="bank-modal-desc"></div>
+    <div class="modal-meta" id="bank-modal-meta"></div>
+    <div class="modal-actions">
+      <button class="btn btn-known"  id="bank-btn-known">Known Income</button>
+      <button class="btn btn-unknown" id="bank-btn-unknown">Unknown Income</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">BC</div>
+  <h1>File Approval Checker</h1>
+  <span class="subtitle">Bonner Carrington</span>
+</header>
+
+<div class="container">
+
+  <!-- Step indicators -->
+  <div class="steps" id="steps-indicator">
+    <div class="step active" id="step-indicator-1">
+      <div class="step-num">1</div>
+      <div class="step-label">Upload &amp; OCR</div>
+    </div>
+    <div class="step-line" id="line-1"></div>
+    <div class="step" id="step-indicator-2">
+      <div class="step-num">2</div>
+      <div class="step-label">Review profile</div>
+    </div>
+    <div class="step-line" id="line-2"></div>
+    <div class="step" id="step-indicator-3">
+      <div class="step-num">3</div>
+      <div class="step-label">Results</div>
+    </div>
+  </div>
+
+  <!-- Intake questionnaire — declares which documents this household requires.
+       Runs before upload. One boolean (or single-select) question at a time;
+       answers accumulate the required-document set (see walkQuestionnaire). -->
+  <div class="step-page" id="stepq">
+    <div class="card">
+      <div class="q-progress" id="q-progress"></div>
+      <div id="q-text"></div>
+      <div class="card-subtitle" style="margin:6px 0 0;">Answer about this household. Your answers — not the file — declare which documents are required.</div>
+      <div class="q-options" id="q-options"></div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-secondary" id="q-back">← Back</button>
+      <span style="font-size:12px;color:var(--gray-400);">“Not sure” always counts the document as required.</span>
+    </div>
+  </div>
+
+  <!-- Questionnaire result — the declared required-document set -->
+  <div class="step-page" id="stepq-done">
+    <div class="card">
+      <div class="card-title">Required documents declared</div>
+      <div class="card-subtitle" id="qd-sub"></div>
+      <div class="checklist" id="qd-list"></div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-secondary" id="qd-edit">← Edit last answer</button>
+      <button class="btn btn-primary" id="qd-continue">Continue to upload →</button>
+    </div>
+  </div>
+
+  <!-- Step 1: Upload + auto-detect -->
+  <div class="step-page active" id="step1">
+    <div class="card">
+      <div class="card-title">Upload case file PDF</div>
+      <div class="card-subtitle">Drop the applicant's combined PDF. Every page is OCR'd up front; the checklist cover page is then located and read so it can be cross-checked against your questionnaire answers.</div>
+
+      <div id="dropzone">
+        <div class="dz-icon">📄</div>
+        <h3>Drop PDF here</h3>
+        <p>Drop the applicant's combined case file PDF, or click to browse</p>
+        <button class="btn btn-secondary" id="browseBtn" type="button">Choose PDF</button>
+        <div id="file-count-display"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf">
+
+      <div id="scan-progress" style="display:none; margin-top:16px;">
+        <div style="font-size:13px; color:var(--gray-600); margin-bottom:8px;" id="scan-progress-label">Starting OCR…</div>
+        <div style="background:var(--gray-200); border-radius:4px; height:6px; overflow:hidden;">
+          <div id="scan-progress-bar" style="height:100%; background:var(--blue); width:0%; transition:width 0.3s;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <span></span>
+      <button class="btn btn-primary" id="btn-to-step2" disabled>Review detected profile →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Profile review (auto-populated) -->
+  <div class="step-page" id="step2">
+    <div class="alert alert-info" id="auto-detect-banner" style="display:none; margin-bottom:16px;">
+      Read from the checklist cover page — review and adjust if anything looks wrong, then check files.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Applicant profile</div>
+      <div class="card-subtitle">Read from the located checklist cover page. Adjust any items that look wrong before continuing.</div>
+
+      <div class="section-label">Program designation</div>
+      <div class="pill-group" id="program-group">
+        <button class="pill" data-group="program" data-value="HTC">HTC</button>
+        <button class="pill" data-group="program" data-value="HOME">HOME</button>
+        <button class="pill" data-group="program" data-value="BOND">BOND</button>
+        <button class="pill" data-group="program" data-value="Other">Other</button>
+      </div>
+
+      <div class="section-label">Income sources <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-500)">(select all that apply)</span></div>
+      <div class="pill-group" id="income-group">
+        <button class="pill" data-group="income" data-value="employed">Employment / paystubs</button>
+        <button class="pill" data-group="income" data-value="school_employee">School employee / bus driver</button>
+        <button class="pill" data-group="income" data-value="self_employed">Self-employment</button>
+        <button class="pill" data-group="income" data-value="new_business">New self-employed business</button>
+        <button class="pill" data-group="income" data-value="gig_income">Gig / platform income (Uber, DoorDash, etc.)</button>
+        <button class="pill" data-group="income" data-value="social_security">Social security (SSI / SSDI)</button>
+        <button class="pill" data-group="income" data-value="pension">Pension / retirement distribution</button>
+        <button class="pill" data-group="income" data-value="section8">Section 8 / voucher</button>
+        <button class="pill" data-group="income" data-value="zero_income">Zero income</button>
+        <button class="pill" data-group="income" data-value="non_employed">Non-employed (no income)</button>
+        <button class="pill" data-group="income" data-value="unemployment">Unemployment benefits</button>
+        <button class="pill" data-group="income" data-value="tips">Tips / commissions</button>
+        <button class="pill" data-group="income" data-value="child_support">Child support / alimony</button>
+        <button class="pill" data-group="income" data-value="recurring_gift">Recurring gifts</button>
+        <button class="pill" data-group="income" data-value="rental_income">Rental income</button>
+      </div>
+
+      <div class="section-label">Household conditions <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-500)">(select all that apply)</span></div>
+      <div class="pill-group" id="conditions-group">
+        <button class="pill" data-group="conditions" data-value="special_needs">Special needs in household</button>
+        <button class="pill" data-group="conditions" data-value="non_citizen">Non-citizen / immigration status</button>
+        <button class="pill" data-group="conditions" data-value="has_minor_children">Minor children in household</button>
+        <button class="pill" data-group="conditions" data-value="student">Student in household</button>
+        <button class="pill" data-group="conditions" data-value="live_in_aide">Live-in care attendant</button>
+        <button class="pill" data-group="conditions" data-value="marital_separation">Marital separation</button>
+        <button class="pill" data-group="conditions" data-value="homeowner">Homeowner</button>
+        <button class="pill" data-group="conditions" data-value="home_listing">Home is listed for sale</button>
+        <button class="pill" data-group="conditions" data-value="renting">Renting out property</button>
+        <button class="pill" data-group="conditions" data-value="new_court_order">New court order</button>
+        <button class="pill" data-group="conditions" data-value="assets_under_50k">Assets under $50,000</button>
+        <button class="pill" data-group="conditions" data-value="assets_over_50k">Assets over $50,000</button>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn btn-secondary" id="btn-to-step1">← Back</button>
+      <button class="btn btn-primary" id="btn-check-files">Check files →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: OCR progress + Results -->
+  <div class="step-page" id="step3">
+    <div id="ocr-loading" style="display:none; margin-bottom:20px;">
+      <div class="card">
+        <div class="card-title">Scanning document…</div>
+        <div class="card-subtitle" id="ocr-loading-label">Starting OCR…</div>
+        <div style="background:var(--gray-200); border-radius:4px; height:8px; overflow:hidden; margin-top:12px;">
+          <div id="ocr-loading-bar" style="height:100%; background:var(--blue); width:0%; transition:width 0.2s;"></div>
+        </div>
+      </div>
+    </div>
+    <div id="results-container" style="display:none;">
+      <div id="results-summary" class="summary-bar"></div>
+      <div id="results-checklist"></div>
+    </div>
+    <div class="nav-row">
+      <button class="btn btn-secondary" id="btn-restart">← Start over</button>
+      <button class="btn btn-outline" onclick="window.print()">🖨 Print report</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Document definitions ───────────────────────────────────────────────────
+// conditions: [] = always required
+// conditions: ['employed'] = required only when those profile flags are set
+// conditions: ['!employed'] = required when NOT employed (negation)
+
+const DOCS = [
+  // Always required
+  { id: 'household_cert', name: 'Rental Information Schedule', conditions: [], order: 1,
+    keywords: ['household cert', 'household certif', 'hh cert'] },
+  { id: 'tic', name: 'Tenant Income Certification', conditions: [], order: 2, note: '3 pages',
+    keywords: ['tenant income cert', 'income certif', 'tic'],
+    exclude: ['tic & lease', 'tic and lease', 't&l', 'fyqa', 'first year quality assurance'] },
+  { id: 'release_consent', name: 'Tenant Release and Consent', conditions: [], order: 3,
+    keywords: ['release and consent', 'tdhca release', 'release & consent'] },
+  { id: 'rights', name: 'Tenant Rights and Resource Acknowledgment', conditions: [], order: 4,
+    keywords: ['rights', 'resource acknowledg', 'tenant rights'] },
+  { id: 'application', name: 'Application', conditions: [], order: 5,
+    keywords: ['application', 'rental app', 'app.pdf'] },
+  { id: 'supp_app', name: 'Supplemental Application', conditions: [], order: 6,
+    keywords: ['supplemental', 'supp app', 'supp. app'] },
+
+  // Conditional — Household composition
+  { id: 'live_in_aide_affidavit', name: 'Live-in Care Attendant Affidavit', conditions: ['live_in_aide'], order: 7,
+    // bare 'live in aide'/'live-in aide' dropped 2026-06-22 (Case A oracle weak FP): matched the
+    // Tenant Selection Plan boilerplate "Live-in aides are subject to the same criminal criteria"
+    // (Case A p45 / Case B p42 / Case C p34). Keep the specific affidavit/attendant phrases;
+    // allOf ['live in aide','affidavit'] re-admits a genuine "Live-In Aide Self Affidavit" (whose
+    // title the kept phrases miss) — the TSP prose has 'live in aide' but no 'affidavit', FP-free.
+    keywords: ['attendant affidavit', 'aide affidavit', 'live in care', 'live in self affidavit'],
+    allOf: ['live in aide', 'affidavit'] },
+  { id: 'live_in_aide_verif', name: 'Live-in Attendant Verification', conditions: ['live_in_aide'], order: 8,
+    keywords: ['aide verif', 'aide need verif', 'live in aide verif', 'attendant verif', 'live in aide need'] },
+  { id: 'marital_sep', name: 'Marital Separation Certification', conditions: ['marital_separation'], order: 9,
+    keywords: ['separation cert', 'marital sep', 'maritial sep'] },
+  { id: 'immigration_docs', name: 'Immigration Status Documentation', conditions: ['non_citizen'], order: 10,
+    keywords: ['immigration', 'green card', 'work authorization', 'employment authorization', 'i-94', 'i94', 'ead card', 'immigration status', 'permanent resident', 'work permit', 'visa status'] },
+  { id: 'minor_children_docs', name: 'Minor Children — Birth Certificates / Custody Docs', conditions: ['has_minor_children'], order: 11,
+    // Bare 'custody'/'minor child'/'dependent child' removed: they false-positive on the
+    // Child Support / Alimony Cert ("custody of any minor child") and similar prose. Keep
+    // the document-specific phrases only. (Case A FF p33 regression.)
+    keywords: ['birth cert', 'birth certificate', 'custody order', 'custody doc'] },
+  // (multiple_adult_cert removed 2026-06-18, Bug 5: not in File Checklist.xlsx — having
+  //  >1 adult adjusts the income-threshold calc in the RIS, out of this tool's scope; it
+  //  is NOT a required document. Condition flag 'multiple_adults' and its questionnaire
+  //  branch removed with it so no orphan flag remains.)
+
+  // Student
+  { id: 'student_eligibility', name: 'Certification of Student Eligibility', conditions: [], order: 13,
+    keywords: ['student elig', 'cert of student', 'student cert', 'student eligibility'] },
+  { id: 'home_student', name: 'TDHCA HOME Student Eligibility Certification', conditions: ['HOME'], order: 14,
+    keywords: ['home student', 'tdhca home student', 'home-student'] },
+  // Situational student SUB-docs: declared by the questionnaire's granular student
+  // flow (q3_1 / q3_1b / q3_1b_i), NOT implied by the coarse checklist 'student' flag.
+  // The checklist's checked 'Certification of Student Eligibility' box requires only
+  // student_eligibility (above); these three have their own checklist boxes that read
+  // unchecked on approved files, so keying them on 'student' over-required them (2
+  // false-missing on Case A/Case B/Case C). Their flags are intentionally absent
+  // from CHECKLIST_FLAGS, so the checklist audit skips them — same pattern as
+  // immigration_docs → 'non_citizen'.
+  { id: 'student_verif', name: 'Student Verification', conditions: ['student_verif'], order: 15,
+    keywords: ['student verif', 'student ver', 'student verification', 'tdhca student'] },
+
+  // Special needs / income calc
+  { id: 'special_needs', name: 'Special Needs Certification', conditions: ['special_needs'], order: 16,
+    keywords: ['special needs', 'special needs cert', 'tdhca special'] },
+  { id: 'income_calc', name: 'Income Calculation Worksheet', conditions: [], order: 17,
+    keywords: ['income calc', 'icw', 'income calculation', 'calculation worksheet'] },
+
+  // Income-based
+  // 'section 8' / 'section8' (bare) + 'hap' removed 2026-06-22 (FP pass, item 2/5): bare
+  // 'section 8' body-matched UTILITY ALLOWANCE schedules ("...utility allowances section 8
+  // voucher holders...") and HUD program references ("...hud section 8 moderate
+  // rehabilitation...") on all three approved files (Case A p4/p7, Case B p3/p6,
+  // Case C p2/p5) — neither is the Income Verification for Households with Section 8 doc.
+  // 'hap' was the CLAUDE.md-flagged short-token collision, but kwHit's \bhap\b boundary
+  // already neutralizes "perhaps" (verified) and the token adds nothing to this doc's title
+  // detection, so it's dropped per the same drop-the-bare-token rule as 'cad'/'social
+  // security'. The distinctive title phrase 'households with section 8' is kept (UA pages say
+  // "voucher holders", HUD pages say "moderate rehabilitation" — not "households with"); its
+  // only fixture occurrences are on the SKIPPED checklist covers, so it's FP-free. No
+  // section 8 household in the 3-file set → genuine detection verified via synthetic control.
+  { id: 'section8_verif', name: 'Income Verification for Households with Section 8', conditions: ['section8'], order: 18,
+    keywords: ['households with section 8', 'section 8 verif', 'tdhca section 8', 'voucher verif'] },
+  { id: 'zero_income', name: 'Certification of Zero Income', conditions: ['zero_income'], order: 19,
+    keywords: ['zero income', 'no income', 'zero income cert'] },
+  { id: 'non_employed', name: 'Non-Employed Certification', conditions: ['non_employed'], order: 20,
+    keywords: ['non-employ', 'non employ', 'nonemploy', 'unemployed cert', 'non employed cert'] },
+  // 'unemployment' / 'unemployment benefit' (bare) removed 2026-06-22 (FP pass, item 3/5):
+  // CONFIRMED LIVE FP — the only STRONG one in this pass, not just weak. Bare 'unemployment'
+  // strong-matched the income-source ENUMERATION on a Zero Income Cert / ICW ("...pensions,
+  // or death benefits; unemployment or disability payments...", Case A p24) and the
+  // Non-Employed Cert ("i do not receive unemployment compensation", Case A p25); it also
+  // weak-matched the TDHCA Release & Consent agency list ("state unemployment agencies",
+  // p10/p9/p8). 'unemployment benefit' separately matched the Application income GRID
+  // ("unemployment benefits [yes/no]", p20/p15/p14). None is the Unemployment Benefits
+  // Verification doc. Fix: drop both bare tokens; key on the exact title phrase, plus an
+  // allOf co-occurrence (income type + issuing agency) for a genuine TWC statement whose
+  // title varies by issuer — same precedent as county_appraisal. 'texas workforce
+  // commission' has ZERO occurrences across all three files, so the allOf is FP-free here;
+  // no unemployment household in the set → genuine detection verified via synthetic control.
+  { id: 'unemployment', name: 'Unemployment Benefits Verification', conditions: ['unemployment'], order: 21,
+    keywords: ['unemployment benefits verification', 'unemployment verif', 'ui benefit'],
+    allOf: ['unemployment', 'texas workforce commission'] },
+  { id: 'employment_verif', name: 'Employment Verification or Paystubs', conditions: ['employed'], order: 22,
+    keywords: ['employ verif', 'employment verif', 'pay statement', 'payment statement', 'paystub', 'pay stub', 'paycheck', 'hotma employ'],
+    // 3-part paystub hybrid (2026-06-22): payroll providers don't self-identify consistently,
+    // so no single fingerprint generalizes. 'pay statement' catches Case C's Tesla stub;
+    // 'payment statement' catches Case B' stub (occurs ONLY on its 4 real paystub pages,
+    // never elsewhere — substring matching does not bridge 'pay statement'→'payment statement');
+    // the allOf catches Case A's payroll-table stub, which has no self-identifying title — its
+    // header is a GROSS PAY/NET PAY/PERIOD END column row. The old allOf required 'pay rate',
+    // which only Case C has (and Case C already matches by title), so it never helped.
+    // 'gross pay'+'net pay'+'period end' co-occur on all 4 Case A stub pages and on NEITHER
+    // Income Calc Worksheet (Case A p26 has none of the three; Case C p19 lacks 'net pay').
+    // 'phone verif'/'telephone verif' moved to clarification_record below (they mis-grabbed the
+    // Telephone Verification/Clarification Record as employment verification — Case A p31/32).
+    allOf: ['gross pay', 'net pay', 'period end'] },
+  // Clarification / Telephone Verification Record. A FLOATING insert: per File Checklist.xlsx
+  // row 37 it "should go directly behind the information being clarified", so it has NO fixed
+  // roster position and is never auto-required. Split out from employment_verif (2026-06-22):
+  // covers both real-world variants — the TDHCA "Telephone Verification/Clarification Record"
+  // (Case A p31/32) and the Bonner Carrington "Clarification Record" (Case B p23). conditions
+  // [] keeps it out of state.required (the questionnaire never declares it), so the live
+  // required-ness path (isRequired) leaves it not-required; it carries no `order` and is excluded
+  // from the order-sequence check, which filters on required+found.
+  { id: 'clarification_record', name: 'Clarification / Telephone Verification Record', conditions: [],
+    keywords: ['telephone verification', 'clarification record', 'phone verif', 'telephone verif'] },
+  { id: 'school_employee_q', name: 'School Employee Questionnaire', conditions: ['school_employee'], order: 23,
+    keywords: ['school employee', 'school employ questionnaire', 'bus driver', 'seasonal employ', 'school staff questionnaire'] },
+  { id: 'gig_income_verif', name: 'Gig Income Verification (Platform Printouts)', conditions: ['gig_income'], order: 24,
+    keywords: ['gig income', 'uber', 'lyft', 'doordash', 'instacart', 'grubhub', 'platform income', 'gig platform', 'gig worker', 'rideshare'] },
+  { id: 'tips', name: 'Tips and Commissions Affidavit', conditions: ['tips'], order: 25,
+    keywords: ['tips and commission', 'tips & commission', 'commissions affidavit', 'tip income affidavit'] },
+  // 'social security' / 'social sec' (bare) removed 2026-06-18 (FP cluster #1): both
+  // strong-matched the "Social Security #" FIELD LABEL on the TAA Rental Application
+  // (Case A p12, Case B p11 — the label sits inside TITLE_ZONE so it read as a title).
+  // Replaced with the agency header 'social security administration', which heads every
+  // genuine SSA benefit/award/verification letter and can never appear in an SSN field —
+  // so real-doc detection is preserved while the field-label collision is gone. The
+  // program tokens (ssa/ssi/ssdi/supplemental security income) remain as supporting signals.
+  { id: 'social_security', name: 'Social Security Verification (SSI / SSDI)', conditions: ['social_security'], order: 26,
+    // 2026-06-22 (Case A oracle weak FP): bare 'ssi' matched garbled RIS table text (Case A p4);
+    // 'ssa' also collided with the applicant name "Vané|ssa" (accented-e breaks the \b boundary,
+    // Case B p36) and a garbled app field (Case B p12) — both dropped (redundant: a genuine
+    // SSA doc carries 'social security administration' / 'supplemental security income').
+    // exclude markers (page-level skip), each suppressing a non-SSA context that the surviving
+    // keywords would otherwise hit, WITHOUT narrowing the keywords (so genuine SSA detection is
+    // intact — no false-negative risk):
+    //   - 'release and consent' → the TDHCA Release & Consent agency list naming "Social Security
+    //     Administration" (weak phantom, Case A p10 / Case B p9 / Case C p8).
+    //   - 'short-term disability' → an EMPLOYER / third-party-administrator STD letter (Tesla/
+    //     Sedgwick "Short-Term Disability Benefits", Case C p24) which 'disability benefit'
+    //     strong-matched. SSA disability is long-term (SSDI); a genuine SSA award NEVER says
+    //     "short-term disability", so this skips only employer/insurer/state-DI letters.
+    keywords: ['social security administration', 'ssdi', 'supplemental security income', 'disability benefit'],
+    exclude: ['release and consent', 'short-term disability'] },
+  { id: 'pension_verif', name: 'Pension / Retirement Benefit Verification', conditions: ['pension'], order: 27,
+    // bare 'pension' dropped 2026-06-22 (Case A oracle FP): it STRONG-matched the income-type
+    // ENUMERATION on the Zero Income Certification ("...retirement funds, pensions, or death
+    // benefits...", Case A p24) and the TIC's "Soc. Security/Pensions" column header (Case B
+    // p5) and the Income Calc Summary (Case B p18). Same root cause as the unemployment FP — a
+    // bare income-type token hitting an enumeration. Kept the specific multi-word phrases; added
+    // an allOf co-occurrence for a genuine pension/retirement AWARD LETTER whose title varies
+    // (mirrors the unemployment 'texas workforce commission' precedent). 'award letter' only
+    // co-occurs with 'pension' on the skipped Income/Asset dividers, so the allOf is FP-free.
+    keywords: ['pension statement', 'retirement benefit', 'pension benefit', 'retirement distribution', 'pension verif', 'retirement verif'],
+    allOf: ['pension', 'award letter'] },
+  { id: 'recurring_gift', name: 'Recurring Gift Affidavit', conditions: ['recurring_gift'], order: 28,
+    keywords: ['recurring gift', 'gift affidavit', 'recurring gift affidavit'] },
+
+  // Self-employment / gig (gig_income also triggers these per routing rules)
+  { id: 'self_employ_affidavit', name: 'Self-Employment Affidavit', conditions: ['self_employed', 'gig_income'], order: 29,
+    // bare 'self employ'/'self-employ' dropped 2026-06-22 (Case A oracle weak FP): matched
+    // "Sales from self-employed resources" on the Zero Income Cert enumeration (Case A p24).
+    // Keep the specific title phrase; allOf re-admits a genuine affidavit whose title varies
+    // (the Zero Income enum has 'self-employ' but no 'affidavit', so the allOf is FP-free).
+    keywords: ['self employment affidavit'],
+    allOf: ['self-employ', 'affidavit'] },
+  // 'tax return' (bare) + bare schedule letters / '1040' tightened 2026-06-22 (FP pass, item
+  // 5/5): bare 'tax return' weak-matched THREE non-document sources on every file — the IRS
+  // Form 4506 consent language ("...request a copy of a tax return if a copy of a tax return
+  // is needed...", Case A p10 / Case B p9 / Case C p8), the Application asset grid
+  // ("cash value... tax return in last 12 months?", p20/p15/p14), and the joint-return
+  // eligibility question ("married and entitled to file a joint tax return?", p21/p16/p15).
+  // None is an actual IRS return. These are WEAK body hits (no strong live FP, and tax_return
+  // is not required on any of the 3 files), but the over-breadth would strong-mask a real gap
+  // on a self-employed / gig household, which the fixture set lacks. The bare schedule letters
+  // were the flagged short-token risk ('schedule c' matches "schedule cleaning"; '1040'
+  // matches "$1040"); on the fixtures they only hit SKIPPED divider/checklist pages. Fix:
+  // narrow to phrases that identify the actual return — 'income tax return' (the 1040 title;
+  // FP-free on every non-skipped page, where the FP prose says "copy of a tax return" / "joint
+  // tax return", never "income tax return"), the IRS form number with prefix ('form 1040', not
+  // '$1040'), and the Schedule-C fingerprint ('schedule c (form 1040)' + its subtitle 'profit
+  // or loss from business' — distinct from profit_loss's "profit AND loss"). No self-employed/
+  // gig household in the set → genuine detection verified via synthetic control.
+  { id: 'tax_return', name: 'Tax Return with Schedule C, E, or F', conditions: ['self_employed', 'gig_income'], order: 30,
+    keywords: ['income tax return', 'form 1040', 'schedule c (form 1040)', 'profit or loss from business'] },
+  // 'profit' / 'loss' (bare) removed 2026-06-22 (FP pass, item 1/5): the single token
+  // 'loss' strong-matched lease legal boilerplate ("...reimburse us for loss, damage,
+  // consequential damages...") inside the TITLE_ZONE of a lease page (Case A p52 /
+  // Case B p49), phantom-marking a Profit and Loss Statement as present on approved
+  // files that contain none. Specific title phrases are kept — a genuine P&L is titled
+  // "Profit and Loss" / "Profit & Loss" / "P&L". The only fixture pages carrying the
+  // phrase "profit and loss" are the SKIPPED Income/Asset Verifications divider, so the
+  // phrase itself is FP-free across all three files. No new_business household in the
+  // 3-file set → real-doc detection verified via synthetic control. Same drop-the-bare-
+  // token pattern as social_security / county_appraisal.
+  { id: 'profit_loss', name: 'Profit and Loss Statement', conditions: ['new_business'], order: 31,
+    keywords: ['profit and loss', 'profit & loss', 'profit and loss statement', 'p&l', 'p & l'] },
+
+  // Child support
+  { id: 'child_support_cert', name: 'Child Support / Alimony Certification', conditions: ['child_support'], order: 32,
+    keywords: ['child support', 'alimony', 'child support cert', 'cs cert', 'alimony cert'] },
+  // Required only for COURT-ORDERED support (cert Section 2), not for every child-support
+  // household — keyed on new_court_order, not child_support. See the q4_8a gate in
+  // walkQuestionnaire. (Case A: child support present but no court order → not required.)
+  { id: 'payment_history', name: 'Payment History or AG 9L001', conditions: ['new_court_order'], order: 33,
+    keywords: ['payment history', 'ag 9l', 'ag9l', 'ag 9l001', 'support income verification', 'attorney general of texas'],
+    exclude: ['provided a payment history'] },
+  // 'court order' / 'court ord' (bare) removed 2026-06-22 (FP pass, item 4/5): CONFIRMED LIVE
+  // FP, STRONG on two files. "court order(ed)" is standard language on the CHILD SUPPORT /
+  // ALIMONY CERTIFICATION ("there is a court ordered support agreement" / "there is no court
+  // order requiring support", Case B p25 / Case C p26 STRONG, Case A p33 weak), the
+  // Application income grid ("sources of child support: court ordered", p20/p15), and the AG
+  // payment registry ("the amount of court ordered dependent", Case B p26) — none is the
+  // actual Court Order document. The 'court ord' stem was strictly broader still (matches
+  // "court ordered" AND "court ordinance") with no added benefit, so it is dropped too. A
+  // genuine court order's TITLE varies widely (SAPCR / agreed / final order, etc.), so per the
+  // unemployment/county_appraisal precedent this keys on the operative DECREE language
+  // ('it is ordered', 'ordered adjudged') — ZERO occurrences on every FP source — plus
+  // specific order titles, plus an allOf that re-admits a doc literally titled "Court Order"
+  // only when the decree co-occurs (so the bare phrase can't sneak the FP back in). ('cause
+  // no' was rejected as a marker: it matches "because not".) No court-order household in the
+  // 3-file set → genuine detection verified via synthetic control.
+  { id: 'court_order', name: 'Court Order', conditions: ['new_court_order'], order: 34,
+    keywords: ['order in suit', 'order affecting the parent-child', 'it is ordered', 'ordered adjudged'],
+    allOf: ['court order', 'it is ordered'] },
+
+  // Student financial aid — situational sub-docs (see student_verif note): declared by
+  // q3_1b / q3_1b_i, not by the coarse checklist 'student' flag. Flags kept out of
+  // CHECKLIST_FLAGS so the audit skips them.
+  { id: 'student_financial', name: 'Student Financial Assistance Verification', conditions: ['student_financial'], order: 35,
+    // 'financial assist'/'student financial' dropped 2026-06-22 (Case A oracle weak FP): both
+    // matched the "Student Financial Assistance" line item in the Supplemental Application income
+    // grid (Case A p20). The genuine doc is the VERIFICATION; requiring 'verif' disambiguates it
+    // from the grid mention (which lacks 'verification').
+    keywords: ['student financial assistance verif', 'financial assistance verif', 'fafsa', 'scholarship', 'grant verif'] },
+  { id: 'covered_costs', name: 'Documentation of Covered Costs', conditions: ['covered_costs'], order: 36,
+    keywords: ['covered cost', 'doc of covered', 'covered costs'] },
+
+  // Homeownership
+  { id: 'homeowner_docs', name: 'Home Ownership Documents', conditions: ['homeowner'], order: 37,
+    keywords: ['homeownership', 'home ownership', 'home owner doc', 'deed', 'home own'] },
+  // 'appraisal district' (standalone) + 'cad' removed 2026-06-18 (FP cluster #2):
+  // 'appraisal district' weak-matched the institution list on the TDHCA Release & Consent
+  // form ("...Public Housing Agencies — Appraisal Districts — Insurance Carrier...";
+  // Case A p10 / Case B p9 / Case C p8), and 'cad' is a known collision-prone short
+  // token (hits "decade"). A genuine County Appraisal District print-out is fingerprinted
+  // by allOf CO-OCCURRENCE — the issuing district name AND a valuation line on the same
+  // page — which the consent form lacks (no "market value"), so the FP is gone while real
+  // print-outs still match. Title phrases kept for the clearly-titled case. (No genuine CAD
+  // doc in the 3-file set — homeowner is in no profile — so verified via synthetic control.)
+  { id: 'appraisal', name: 'County Appraisal Print Out', conditions: ['homeowner'], order: 38,
+    keywords: ['county appraisal', 'appraisal print', 'tax appraisal'],
+    allOf: ['appraisal district', 'market value'] },
+  { id: 'mortgage', name: 'Mortgage Statement', conditions: ['homeowner'], order: 39,
+    // bare 'mortgage' dropped 2026-06-22 (Case A oracle weak FP): matched the "Mortgage Note
+    // Held" line in the Supplemental Application asset grid (Case A p20) and "recorded mortgages"
+    // in lease boilerplate (Case A p54). The genuine doc is a Mortgage Statement; the specific
+    // phrases identify it without matching those mentions.
+    keywords: ['mortgage statement', 'mortgage stmt', 'deed of trust'] },
+  { id: 'listing_contract', name: 'Listing Contract', conditions: ['home_listing'], order: 40,
+    keywords: ['listing contract', 'mls listing', 'listing agree', 'realtor'] },
+  { id: 'rental_worksheet', name: 'Rental Payment Worksheet', conditions: ['renting', 'rental_income'], order: 41,
+    // bare 'rental income' dropped 2026-06-22 (Case A oracle FP): it STRONG-matched the income-
+    // type ENUMERATION on the Certification of Zero Income ("Rental income from real or personal
+    // property", Case A p24). Same root cause as the pension_verif / unemployment FPs. The
+    // remaining phrases ('rental payment' / 'rent(al) worksheet') specifically title the genuine
+    // Rental Payment Worksheet, so no allOf is needed; 'rental income affidavit' is retained
+    // (multi-word, FP-free). No rental household in the fixtures — genuine detection via controls.
+    keywords: ['rental payment', 'rent worksheet', 'rental worksheet', 'rental income affidavit'] },
+
+  // Assets
+  { id: 'asset_cert', name: 'Asset Certification (under $50,000)', conditions: ['assets_under_50k'], order: 42,
+    keywords: ['asset cert', 'under 50', 'net family asset', 'tdhca asset', 'asset certification', 'hotma asset'] },
+  // 'account statement' added 2026-06-18 (Bug 4): the bank-generated statement's own
+  // title is "ACCOUNT STATEMENT" (Case A p35, UFCU), never literally "bank statement"
+  // — that phrase only appears on the skipped checklist/asset-divider covers. Title is
+  // clean+consistent here so a keyword variant suffices (no structural allOf needed).
+  // Verified no title-zone FP across Case A/Case B/Case C (Case B p36 is a real
+  // account statement → correct weak body match; Case C has none).
+  { id: 'bank_statement', name: 'Bank Statement or Bank Verification', conditions: ['assets_over_50k'], order: 43,
+    keywords: ['bank statement', 'account statement', 'bank verif', 'bank stmnt', 'bank stmt'] },
+
+  // Always
+  { id: 'tenant_selection_plan', name: 'Tenant Selection Plan', conditions: [], order: 44,
+    keywords: ['tenant selection', 'selection plan'] },
+];
+
+// ─── State ──────────────────────────────────────────────────────────────────
+const state = {
+  profile: { program: null, income: new Set(), conditions: new Set() },
+  qa: {},                  // questionnaire answers: questionKey -> 'yes'|'no'|'maybe' | choice value
+  required: new Set(),     // ← questionnaire OUTPUT: declared required doc ids (consumed by isRequired())
+  questionnaire: null,     // full result record {required, uncertain, members, program, ...} for audit/debug
+  checklistProfile: null,  // checklist cover-page checkbox reads (Feature A); audited vs `required` by auditChecklistVsQuestionnaire()
+  pdfPages: [],    // per-page OCR text array; index 0 = page 1
+  pdfName: '',
+  pdfFile: null,   // File object kept so we can re-send for full OCR
+  currentStep: 1,
+  // Bank statement review workflow
+  bankStatementPages: [], // 0-based page indices where bank statement pages were detected
+  bankTransactions: [],   // extracted transactions from /api/analyze-bank
+  bankReview: [],         // { transaction, classification: 'known'|'unknown' } — officer decisions
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function normalize(s) {
+  return (s || '').toLowerCase().replace(/[_\-\.]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function kwHit(haystackNorm, kwNorm) {
+  // normalize() strips the spaces/punctuation the keyword lists used for boundary
+  // protection, so enforce word boundaries here for short abbreviations (tic, icw,
+  // ssa, hap, cad…) to stop them matching inside longer words. Multi-word/long
+  // keywords keep substring semantics so partials like "household certif" still match.
+  if (!kwNorm.includes(' ') && kwNorm.length <= 4) {
+    const esc = kwNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('\\b' + esc + '\\b').test(haystackNorm);
+  }
+  return haystackNorm.includes(kwNorm);
+}
+
+// True for the cover "FILE APPROVAL CHECKLIST" pages that list every doc by name.
+// We must skip these pages entirely — every keyword appears there as a list item.
+function isChecklistPage(pageText) {
+  const norm = normalize(pageText);
+  if (norm.includes('file approval checklist') || norm.includes('applicant checklist')) return true;
+  // Auditor approval/transmittal cover letter: correspondence, not a tenant doc,
+  // but its prose cross-references docs (e.g. "a TIC & Lease review").
+  if (norm.includes('based on documentation presented only')) return true;
+  if (norm.includes('approved for move in') && norm.includes('audit')) return true;
+  // "Income and/or Asset Verifications" divider page: lists acceptable verification
+  // types by name (e.g. "bank statement"), so it false-positives as those docs. Skip
+  // it like the other doc-listing covers. NOTE: this is Bonner-Carrington-specific
+  // phrasing — unconfirmed as invariant across other audit firms/formats (see CLAUDE.md
+  // gotchas). (Case A FF p44 regression: false bank_statement match.)
+  if (norm.includes('income and or asset verifications') || norm.includes('acceptable forms of verification')) return true;
+  return false;
+}
+
+// How many characters from the top of a page to treat as the "title zone".
+// A document's own name appears at the top; cross-references appear in body text.
+const TITLE_ZONE = 600;
+
+// Returns { keyword, page, weak } or null.
+//   weak: false → keyword found in the title zone (strong signal — this IS the document)
+//   weak: true  → keyword only found in body text (cross-reference risk; used as fallback)
+// If doc.allOf is set, a page where every term in allOf appears anywhere in the body
+// is treated as a medium-confidence match (stronger than a single body-text hit, weaker
+// than a title-zone match). This is used for documents like paystubs whose title varies
+// by employer but whose content is consistent.
+function matchDoc(doc, pages) {
+  let weakMatch = null;
+  let allOfMatch = null;
+
+  for (let i = 0; i < pages.length; i++) {
+    if (isChecklistPage(pages[i])) continue; // skip cover checklist pages
+
+    const titleNorm = normalize(pages[i].substring(0, TITLE_ZONE));
+    const bodyNorm  = normalize(pages[i]);
+
+    if (doc.exclude && doc.exclude.some(ex => bodyNorm.includes(normalize(ex)))) continue;
+    for (const kw of doc.keywords) {
+      const kwNorm = normalize(kw);
+      if (kwHit(titleNorm, kwNorm)) {
+        return { keyword: kw, page: i + 1, weak: false }; // strong match — stop searching
+      }
+      if (!weakMatch && kwHit(bodyNorm, kwNorm)) {
+        weakMatch = { keyword: kw, page: i + 1, weak: true }; // body-text fallback; keep scanning for a better hit
+      }
+    }
+
+    // allOf: page must contain every listed term somewhere in its body
+    if (!allOfMatch && doc.allOf && doc.allOf.length > 0) {
+      if (doc.allOf.every(term => bodyNorm.includes(normalize(term)))) {
+        allOfMatch = { keyword: doc.allOf.join(' + '), page: i + 1, weak: true };
+      }
+    }
+  }
+
+  // Prefer allOf over a single-keyword body match — multiple co-occurring terms
+  // are a stronger fingerprint than one term appearing anywhere in the text.
+  return allOfMatch || weakMatch;
+}
+
+// Required-ness comes from the QUESTIONNAIRE, not the checklist checkboxes and not
+// doc.conditions. state.required is the questionnaire's declared set of doc ids. The
+// startup gate makes the questionnaire mandatory, so this
+// set MUST be populated before results render. An empty/undefined set here is a real
+// bug (lost state, reload mid-flow, race) — we fail loudly rather than silently
+// degrading to old behavior and masking it behind plausible-looking output.
+// Tests that want the legacy condition-based behavior must opt in explicitly with
+// { useConditionsFallback: true }. doc.conditions is intentionally retained — it
+// still drives the checklist↔questionnaire and checklist↔file audits' mapping.
+function isRequired(doc, { useConditionsFallback = false } = {}) {
+  if (useConditionsFallback) return isRequiredByConditions(doc);
+  if (state.required && state.required.size > 0) return state.required.has(doc.id);
+  throw new Error('isRequired: state.required is empty/undefined — the questionnaire ' +
+    'was not completed before results rendered (internal error / lost state).');
+}
+
+// Legacy condition-based required-ness (checklist/pill profile). Kept as the
+// no-questionnaire fallback and reused to compute "what the checklist implies".
+function isRequiredByConditions(doc, profile = state.profile) {
+  if (!doc.conditions || doc.conditions.length === 0) return true;
+  for (const cond of doc.conditions) {
+    if (['HTC','HOME','BOND','Other'].includes(cond)) {
+      if (profile.program === cond) return true;
+      continue;
+    }
+    if (profile.income.has(cond) || profile.conditions.has(cond)) return true;
+  }
+  return false;
+}
+
+
+// ─── Bank statement page detection ───────────────────────────────────────────
+// Returns 0-based page indices where bank statement pages are detected, whether
+// or not the questionnaire declared them required. Two signals:
+//   1. A bank statement keyword appears in the title zone (strong match, like
+//      "ACCOUNT STATEMENT" on the header page).
+//   2. A bank transaction table continuation marker appears in the body — the
+//      fragmented column headers that UFCU and similar banks use on pages 2+
+//      ("TRANS EFFECTIVE", "DATE TYPE DESCRIPTION", etc.).
+// Checklist pages are skipped (they list every doc by name and would false-match).
+function findBankStatementPages(pages) {
+  const bankKws = ['bank statement', 'account statement', 'bank verif', 'bank stmnt', 'bank stmt'];
+  const contMarkers = ['trans effective', 'date type description', 'date date type'];
+  const indices = [];
+  for (let i = 0; i < pages.length; i++) {
+    if (isChecklistPage(pages[i])) continue;
+    const titleNorm = normalize(pages[i].substring(0, TITLE_ZONE));
+    const bodyNorm  = normalize(pages[i]);
+    const isBankHeader   = bankKws.some(kw => kwHit(titleNorm, normalize(kw)));
+    const isContinuation = contMarkers.some(m  => bodyNorm.includes(normalize(m)));
+    if (isBankHeader || isContinuation) indices.push(i);
+  }
+  return indices;
+}
+
+// ─── Bank statement review modal ─────────────────────────────────────────────
+
+async function openBankReviewModal() {
+  const btn = document.getElementById('btn-review-bank');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+  const pageData = state.bankStatementPages.map(i => ({
+    index: i,
+    text: state.pdfPages[i] || '',
+  }));
+
+  let transactions = [];
+  try {
+    const res = await fetch('/api/analyze-bank', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pages: pageData }),
+    });
+    const data = await res.json();
+    transactions = data.transactions || [];
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Review Transactions →'; }
+    alert('Could not load transactions. Make sure the app server is running.');
+    return;
+  }
+
+  if (transactions.length === 0) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Review Transactions →'; }
+    alert('No deposits or transfers were detected on the bank statement pages. OCR quality may be too low to extract individual transactions — review the statements manually.');
+    return;
+  }
+
+  state.bankTransactions = transactions;
+  state.bankReview = [];
+  renderBankReviewStep(0);
+}
+
+function renderBankReviewStep(idx) {
+  const txs = state.bankTransactions;
+  const total = txs.length;
+  const tx = txs[idx];
+
+  document.getElementById('bank-review-overlay').classList.add('active');
+
+  document.getElementById('bank-modal-counter').textContent =
+    `Transaction ${idx + 1} of ${total}`;
+  document.getElementById('bank-modal-prog').style.width =
+    `${(idx / total) * 100}%`;
+
+  // Type badge styling
+  const badgeStyles = {
+    payroll:  { bg: 'var(--green-light)',  color: 'var(--green)',  border: 'var(--green-border)',  label: 'Payroll / Direct Deposit' },
+    p2p:      { bg: 'var(--yellow-light)', color: 'var(--yellow)', border: 'var(--yellow-border)', label: 'P2P Transfer' },
+    transfer: { bg: 'var(--blue-light)',   color: 'var(--blue)',   border: 'var(--blue-border)',   label: 'Transfer' },
+    deposit:  { bg: 'var(--gray-100)',     color: 'var(--gray-600)', border: 'var(--gray-200)',    label: 'Deposit' },
+  };
+  const s = badgeStyles[tx.type] || badgeStyles.deposit;
+  const badge = document.getElementById('bank-modal-badge');
+  badge.textContent = s.label;
+  badge.style.cssText = `background:${s.bg};color:${s.color};border-color:${s.border};`;
+
+  const amountEl = document.getElementById('bank-modal-amount');
+  if (tx.amount != null) {
+    const raw  = String(tx.amount).replace(/^\+/, '').replace(/^\$/, '');
+    const isNeg = raw.startsWith('-') || tx.direction === 'out';
+    const absAmt = raw.replace(/^-/, '');
+    amountEl.textContent = isNeg ? `-$${absAmt}` : `+$${absAmt}`;
+    amountEl.style.color  = isNeg ? '#dc2626' : 'var(--green)';
+  } else {
+    amountEl.textContent = 'Amount: see statements';
+    amountEl.style.color = 'var(--gray-400)';
+  }
+
+  document.getElementById('bank-modal-desc').textContent = tx.description;
+  document.getElementById('bank-modal-meta').textContent =
+    (tx.date ? `Date: ${tx.date}  ·  ` : '') + `PDF page ${tx.page}`;
+
+  // Replace buttons to drop stale event listeners
+  ['bank-btn-known', 'bank-btn-unknown'].forEach(id => {
+    const old = document.getElementById(id);
+    const clone = old.cloneNode(true);
+    old.replaceWith(clone);
+  });
+
+  const advance = (classification) => {
+    state.bankReview.push({ transaction: tx, classification });
+    if (idx + 1 < total) {
+      renderBankReviewStep(idx + 1);
+    } else {
+      document.getElementById('bank-modal-prog').style.width = '100%';
+      document.getElementById('bank-review-overlay').classList.remove('active');
+      renderBankSummaryCard();
+    }
+  };
+
+  document.getElementById('bank-btn-known').addEventListener('click',   () => advance('known'));
+  document.getElementById('bank-btn-unknown').addEventListener('click', () => advance('unknown'));
+}
+
+function renderBankSummaryCard() {
+  const card = document.getElementById('bank-stmt-card');
+  if (!card) return;
+
+  const review  = state.bankReview;
+  const known   = review.filter(r => r.classification === 'known');
+  const unknown = review.filter(r => r.classification === 'unknown');
+
+  const txRow = (r, icon, iconColor) => {
+    const tx = r.transaction;
+    const meta = [tx.date, tx.amount, `page ${tx.page}`].filter(Boolean).join(' · ');
+    return `<div class="checklist-item">
+      <div class="item-status" style="color:${iconColor};">${icon}</div>
+      <div class="item-name">${tx.description}<div class="matched-file">${meta}</div></div>
+    </div>`;
+  };
+
+  let html = `
+    <div class="card-title">Bank Statement Review — Complete</div>
+    <div class="card-subtitle">
+      Reviewed ${review.length} transaction${review.length !== 1 ? 's' : ''} &nbsp;·&nbsp;
+      <span style="color:var(--green);font-weight:600;">${known.length} Known Income</span> &nbsp;·&nbsp;
+      <span style="color:${unknown.length > 0 ? 'var(--red)' : 'var(--gray-500)'};font-weight:600;">${unknown.length} Unknown Income</span>
+    </div>`;
+
+  if (unknown.length > 0) {
+    html += `<div class="section-label" style="margin-top:0;">Unknown Income — needs documentation</div>
+      <div class="checklist" style="margin-bottom:16px;">
+        ${unknown.map(r => txRow(r, '!', 'var(--red)')).join('')}
+      </div>`;
+  }
+
+  if (known.length > 0) {
+    html += `<details><summary style="cursor:pointer;font-size:13px;color:var(--gray-500);user-select:none;padding:4px 0;">
+        Known Income (${known.length})
+      </summary>
+      <div class="checklist" style="margin-top:8px;">
+        ${known.map(r => txRow(r, '✓', 'var(--green)')).join('')}
+      </div></details>`;
+  }
+
+  html += `<div style="margin-top:16px;">
+    <button class="btn btn-secondary" id="bank-btn-rereview" style="font-size:13px;">Re-review transactions</button>
+  </div>`;
+
+  card.innerHTML = html;
+  card.style.borderColor = unknown.length > 0 ? 'var(--red-border)' : 'var(--green-border)';
+
+  document.getElementById('bank-btn-rereview').addEventListener('click', () => {
+    state.bankReview = [];
+    openBankReviewModal();
+  });
+}
+
+// ─── Feature A ↔ Feature B cross-check (ADVISORY ONLY) ───────────────────────
+// Surfaces contradictions between what the checklist marks REQUIRED (Feature A,
+// the cover-page checkbox reads) and what the file actually EVIDENCES (Feature B,
+// matchDoc over every page). It NEVER changes required-ness, presence, the missing
+// list, or the profile — it only emits soft flags that point a human back at the
+// cover-page checkboxes. A wrong advisory stays visible; it never becomes a wrong
+// answer. This exists to catch checkbox misreads WITHOUT touching the OCR-glyph
+// decision logic (CLAUDE.md forbids blind glyph tuning).
+//
+// "ZERO TRACE" THRESHOLD (deliberately conservative — this is where false flags
+// come from). Direction 1 fires for a doc only when ALL hold:
+//   (a) doc.required (checklist says it's needed), AND
+//   (b) doc.foundPage === null — NO document match at ANY confidence (strong OR
+//       weak); a weak body-text mention already counts as a trace and suppresses
+//       the flag, AND
+//   (c) no corroborating evidence — NO other doc sharing one of this doc's
+//       conditions was found present anywhere in the file. A present sibling means
+//       the household genuinely has that income/condition (e.g. a Child Support
+//       Cert present corroborates a required Payment History), so the requirement
+//       is real and the doc is merely not-yet-filed — a genuine gap, not a misread.
+// Too loose (drop (c)) → every not-yet-filed required doc gets flagged. Too tight
+// (require profile evidence) → circular, since the profile IS Feature A.
+//
+// Direction 2 fires for a doc only when:
+//   (a) doc.foundPage !== null AND doc.weakMatch === false — a STRONG match, AND
+//   (b) the matched page passes a TIGHT HEADING-ZONE re-validation (see below), AND
+//   (c) !doc.required — the checklist box reads as NOT required.
+// Catches the dropped-glyph false negative (e.g. Special Needs cert strong on its
+// own page, but the checklist box's glyph was lost to OCR).
+//
+// HEADING-ZONE re-validation (this is the Direction-2 false-flag guard). Un-gating
+// the present-scan exposes that several docs have over-broad keywords that land a
+// "strong" hit inside the 600-char TITLE_ZONE of a *different* document — e.g. a
+// Zero Income Cert lists "unemployment / pension / rental income"; an Income & Asset
+// Verifications cover page lists "self-employ / tax return / profit / bank statement";
+// the Application carries a "social security" SSN field; a Child Support Cert says
+// "custody". Those are NOT the document, just a mention. Measured across the real
+// case files, every genuine document title sits in the first ~67 chars of its page,
+// while every such mention sits at char ≥123 — a clean gap. So Direction 2 trusts a
+// strong match only if one of the doc's keywords also lands within HEADING_ZONE (100)
+// chars of the page top (the actual heading line). Erring tight is correct for an
+// advisory: a missed advisory degrades gracefully; a flood of false ones gets ignored.
+const HEADING_ZONE = 100;
+function isHeadingMatch(doc, pageText) {
+  const headNorm = normalize(pageText.substring(0, HEADING_ZONE));
+  return doc.keywords.some(kw => kwHit(headNorm, normalize(kw)));
+}
+function crossCheck(evaluated, pages) {
+  // dir1 (checklist-required, zero file trace) retired 2026-06-22 — redundant with
+  // auditChecklistVsQuestionnaire's dirB now that the questionnaire is the source of
+  // required-ness; dir1 never fired on real fixtures in production use. Kept dormant
+  // (gated, not deleted) in case a future edge case needs it — see git history at commit
+  // ce7e1df / this commit for context. Flip CROSSCHECK_DIR1_ENABLED to true to revive;
+  // crosscheck_regression.test.js asserts it stays dormant, so a re-enable is caught.
+  const CROSSCHECK_DIR1_ENABLED = false;
+
+  // condition -> ids of docs that carry it (for sibling corroboration in dir1, dormant)
+  const condSiblings = {};
+  for (const d of evaluated) {
+    for (const c of (d.conditions || [])) {
+      (condSiblings[c] = condSiblings[c] || []).push(d.id);
+    }
+  }
+  const foundIds = new Set(evaluated.filter(d => d.foundPage !== null).map(d => d.id));
+
+  const direction1 = []; // DORMANT (see CROSSCHECK_DIR1_ENABLED) — always empty while retired
+  const direction2 = []; // strongly present in file, not required per checklist
+  for (const d of evaluated) {
+    if (CROSSCHECK_DIR1_ENABLED && d.required && d.foundPage === null) {
+      const corroborated = (d.conditions || []).some(c =>
+        (condSiblings[c] || []).some(id => id !== d.id && foundIds.has(id)));
+      if (!corroborated) direction1.push(d);
+    }
+    if (!d.required && d.foundPage !== null && d.weakMatch === false
+        && isHeadingMatch(d, pages[d.foundPage - 1])) {
+      direction2.push(d);
+    }
+  }
+  return { direction1, direction2 };
+}
+
+// ─── Feature A role-flip: checklist ↔ QUESTIONNAIRE audit ─────────────────────
+// The checklist cover page no longer DECLARES required-ness — the questionnaire
+// does (state.required). The checklist's checked boxes are now AUDITED against the
+// questionnaire and disagreements are flagged (same two-direction advisory pattern
+// as crossCheck above, but comparing two declarations instead of declaration↔file).
+//
+// NOTE: crossCheck()/isHeadingMatch()/HEADING_ZONE are the checklist↔file advisory. It
+// IS rendered (see renderResults — "Checklist cross-check — checklist vs. file"), now
+// NARROWED to dir2 only: "a document is physically present in the file but the checklist
+// marks it not-required." This is the one signal with an independent file-evidence axis —
+// it can catch a present doc that BOTH the checklist box and the questionnaire missed
+// (e.g. a genuine AG payment-history doc when no court order was declared), which the
+// checklist↔questionnaire audit (comparing two human declarations to each other) is
+// structurally blind to. dir1 (checklist-required, zero file trace) is RETIRED dormant —
+// see CROSSCHECK_DIR1_ENABLED inside crossCheck() above.
+
+// The condition flags detect_checklist_profile (app.py) can actually read as
+// checkboxes. A doc is only auditable against the checklist if one of its
+// conditions is here; docs with no corresponding checkbox (e.g. immigration_docs →
+// 'non_citizen') are skipped so they don't perpetually flag as "checklist unchecked".
+const CHECKLIST_FLAGS = new Set([
+  'HTC','HOME','BOND',
+  'employed','school_employee','self_employed','new_business','gig_income',
+  'social_security','pension','section8','zero_income','non_employed',
+  'unemployment','tips','child_support','recurring_gift','rental_income',
+  'special_needs','live_in_aide','marital_separation','student',
+  'has_minor_children','homeowner','home_listing',
+  'new_court_order','assets_under_50k','assets_over_50k',
+]);
+
+// Map a checklist checkbox profile {program, income[], conditions[]} to the set of
+// doc ids it implies are required, reusing the same condition→doc mapping the pills
+// used (isRequiredByConditions). Returns null when no checklist page was located.
+function docsImpliedByChecklist(profile) {
+  if (!profile) return null;
+  const asProfile = {
+    program: profile.program || null,
+    income: new Set(profile.income || []),
+    conditions: new Set(profile.conditions || []),
+  };
+  const ids = new Set();
+  for (const doc of DOCS) {
+    // Only condition-driven docs can be expressed by checklist boxes; baseline
+    // (conditions: []) docs are always-required and never an audit disagreement.
+    if (!(doc.conditions || []).length) continue;
+    if (isRequiredByConditions(doc, asProfile)) ids.add(doc.id);
+  }
+  return ids;
+}
+
+// Compare the questionnaire's declared set (state.required) against what the
+// checklist's checked boxes imply. Returns { dirA, dirB } or null if no checklist.
+//   dirA: required by questionnaire, but the checklist box reads UNCHECKED.
+//   dirB: checked on the checklist, but the questionnaire says NOT required.
+// Restricted to checklist-auditable docs (see CHECKLIST_FLAGS).
+function auditChecklistVsQuestionnaire() {
+  const implied = docsImpliedByChecklist(state.checklistProfile);
+  if (!implied) return null;
+  const dirA = [], dirB = [];
+  for (const doc of DOCS) {
+    if (!(doc.conditions || []).some(c => CHECKLIST_FLAGS.has(c))) continue;
+    const q = state.required.has(doc.id);
+    const c = implied.has(doc.id);
+    if (q && !c) dirA.push(doc);
+    else if (c && !q) dirB.push(doc);
+  }
+  return { dirA, dirB };
+}
+
+// ═══ Intake questionnaire — declares the required-document set ════════════════
+// Mirrors RequiredDocs_DecisionTree.md. walkQuestionnaire() is a PURE function of
+// the answer map: it walks the tree, accumulating required doc ids from the +DOC
+// annotations, and stops at the first UNanswered question (returned as `pending`).
+// Re-running it on every answer/Back makes the adaptive flow fully deterministic;
+// the caller prunes any answers left behind by an abandoned branch using `visited`.
+//
+// Output (on completion) is state.required — a Set of doc ids drawn from DOCS[].
+// This is the questionnaire's authoritative declaration, and it is the live source of
+// required-ness: isRequired() consumes state.required (see isRequired() above), and the
+// results render directly off it.
+
+const DOC_BY_ID = Object.fromEntries(DOCS.map(d => [d.id, d]));
+
+// SECTION 0 — baseline docs, always required regardless of answers.
+const BASELINE_DOCS = ['application','supp_app','household_cert','tic',
+  'release_consent','rights','income_calc','tenant_selection_plan','student_eligibility'];
+
+const Q_STOP = Symbol('q-stop');
+function boolQ(section, text) { return { section, text, type: 'boolean' }; }
+
+function walkQuestionnaire(qa) {
+  const required  = new Set(BASELINE_DOCS);
+  const uncertain = new Set();   // docs added via a "Not sure" answer → flagged "verify"
+  const visited   = [];          // answered keys consumed this walk, in order
+  const members   = [];
+  let pending = null;
+  const program = qa.q1_1 || null;
+
+  const yes = v => v === 'yes' || v === 'maybe';   // conservative default: Not sure ⇒ require
+  const ask = (key, q) => {
+    if (!(key in qa)) { pending = { key, ...q }; throw Q_STOP; }
+    visited.push(key);
+    return qa[key];
+  };
+  const add  = (...ids) => ids.forEach(id => required.add(id));
+  const addF = (v, ...ids) => ids.forEach(id => { required.add(id); if (v === 'maybe') uncertain.add(id); });
+
+  try {
+    // ── SECTION 1 — Program & subsidy ──
+    ask('q1_1', { section:'Program & subsidy', text:'Which program funds this unit?', type:'choice',
+      options:[{value:'HTC',label:'HTC / LIHTC'},{value:'BOND',label:'BOND'},{value:'HOME',label:'HOME'}] });
+    { const v = ask('q1_2', boolQ('Program & subsidy','Does the household hold a Section 8 / Housing Choice Voucher?'));
+      if (yes(v)) addF(v,'section8_verif'); }
+
+    // ── SECTION 2 — Household composition ──
+    // (q2_1 "more than one adult?" removed 2026-06-18, Bug 5: it only ever declared the
+    //  non-existent multiple_adult_cert; adult count drives the RIS income threshold,
+    //  not the required-doc set, so there is nothing for the questionnaire to declare.)
+    { const v = ask('q2_2', boolQ('Household composition','Are there any minor children (under 18) in the household?'));
+      if (yes(v)) {
+        const bc = ask('q2_2b', boolQ('Household composition','Does your site require birth certificates for minor children?'));
+        if (yes(bc)) addF(bc,'minor_children_docs');
+        const c = ask('q2_2a', boolQ('Household composition','Is custody shared / contested / court-involved?'));
+        if (yes(c)) addF(c,'court_order'); } }
+    { const v = ask('q2_3', boolQ('Household composition','Is any adult member married but separated, or is a spouse NOT on the lease?'));
+      if (yes(v)) addF(v,'marital_sep'); }
+    { const v = ask('q2_4', boolQ('Household composition','Is there a live-in care attendant (a non-household aide who lives in the unit)?'));
+      if (yes(v)) addF(v,'live_in_aide_affidavit','live_in_aide_verif'); }
+    { const v = ask('q2_5', boolQ('Household composition','Does the household qualify under a disability / special-needs set-aside, or is special-needs status being claimed?'));
+      if (yes(v)) addF(v,'special_needs'); }
+    { const v = ask('q2_6', boolQ('Household composition','Is any household member a non-U.S. citizen / non-eligible immigration status?'));
+      if (yes(v)) addF(v,'immigration_docs'); }
+
+    // ── SECTION 3 — Student status (household-level, per the tree's "is ANY member a student?" form) ──
+    { const v = ask('q3_1', boolQ('Student status','Is any household member a full-time student (now or 5+ months this year)?'));
+      if (yes(v)) { addF(v,'student_verif');
+        if (program === 'HOME') add('home_student');   // Q3.1a "is this HOME-funded?" carried from Q1.1 — not re-asked
+        const fa = ask('q3_1b', boolQ('Student status','Does the student receive financial aid / scholarships / grants?'));
+        if (yes(fa)) { addF(fa,'student_financial');
+          const ex = ask('q3_1b_i', boolQ('Student status','Does the aid exceed tuition & required fees (the excess counts as income)?'));
+          if (yes(ex)) addF(ex,'covered_costs'); } } }
+
+    // ── SECTION 4 — Income (PER-MEMBER LOOP: repeat the whole block per adult) ──
+    let m = 0;
+    while (true) {
+      const t = '_m' + m, who = 'Income — member ' + (m + 1);
+      const mem = { index: m };
+
+      const inc = ask('q4_1' + t, boolQ(who,'Does this member have ANY income of any kind (from any source)?'));
+      mem.hasIncome = yes(inc);
+      if (!yes(inc)) add('zero_income');               // Q4.1 N → Certification of Zero Income
+
+      const emp = ask('q4_1b' + t, boolQ(who,'Is this member currently employed (working a job right now)?'));
+      mem.employed = yes(emp);
+      if (!yes(emp)) {                                  // Q4.1b N → Non-Employed Certification
+        add('non_employed');
+        const br = ask('q4_1b_i' + t, { section:who, text:'Which best describes this member?', type:'choice', options:[
+          {value:'1',label:'Not employed; no intent to seek work soon; no unemployment comp/benefits'},
+          {value:'2',label:'Not employed, but expects to become employed soon'},
+          {value:'3',label:'Currently employed but will be unemployed by move-in / certification'} ] });
+        mem.nonEmployedBranch = br;
+        if (br === '3') add('employment_verif');        // over-ask (⚠): still-active job needs verification
+      }
+
+      if (yes(inc)) {   // member has income → ask the full 4A/4B detail (over-ask: see summary ⚠)
+        // 4A — earned / employment income
+        const w2 = ask('q4_2' + t, boolQ(who,'Is this member employed by an employer (W-2 wages)?'));
+        if (yes(w2)) { addF(w2,'employment_verif');
+          const sch = ask('q4_2a' + t, boolQ(who,'Is the employer a school / school district?'));        if (yes(sch)) addF(sch,'school_employee_q');
+          const tp  = ask('q4_2b' + t, boolQ(who,'Does this job include tips and/or commissions?'));      if (yes(tp))  addF(tp,'tips'); }
+        const gig = ask('q4_3' + t, boolQ(who,'Does this member do gig / platform work (Uber, DoorDash, Instacart, etc.)?')); if (yes(gig)) addF(gig,'gig_income_verif');
+        const se  = ask('q4_4' + t, boolQ(who,'Is this member self-employed / a business owner / 1099 contractor?'));        if (yes(se))  addF(se,'self_employ_affidavit','tax_return','profit_loss');
+        // 4B — benefits / unearned income
+        const ss  = ask('q4_5' + t, boolQ(who,'Does this member receive Social Security, SSI, or SSDI?'));                    if (yes(ss))  addF(ss,'social_security');
+        const pen = ask('q4_6' + t, boolQ(who,'Does this member receive a pension, retirement distribution, or annuity?'));  if (yes(pen)) addF(pen,'pension_verif');
+        const ue  = ask('q4_7' + t, boolQ(who,'Does this member receive unemployment benefits?'));                           if (yes(ue))  addF(ue,'unemployment');
+        const cs  = ask('q4_8' + t, boolQ(who,'Does this member receive child support or alimony (or is entitled to it)?'));
+        if (yes(cs)) { addF(cs,'child_support_cert');
+          // Payment History / AG 9L001 is only required for COURT-ORDERED support
+          // (Child Support/Alimony Cert Section 2: "There IS a court-ordered support
+          // agreement (I have provided a payment history)"). A non-court-ordered
+          // arrangement (cert Section 3/4) needs the cert but NOT a payment history,
+          // so payment_history is gated on the court-order answer, not on child support.
+          const co = ask('q4_8a' + t, boolQ(who,'Is there a court order for the support?')); if (yes(co)) addF(co,'court_order','payment_history'); }
+        const gf = ask('q4_9' + t, boolQ(who,'Does this member receive recurring monetary gifts / regular help from outside the household?')); if (yes(gf)) addF(gf,'recurring_gift');
+      }
+
+      members.push(mem);
+      const more = ask('addMember' + t, boolQ(who,'Add another household member?'));
+      if (!yes(more)) break;
+      m++;
+    }
+
+    // ── SECTION 5 — Assets (household-level) ──
+    { const over = ask('q5_0', boolQ('Assets',"Are the household's total assets over $50,000? Count ALL assets — the cash value of any real property (home, land, rental property) PLUS bank/financial accounts and other assets, not just liquid cash."));
+      if (yes(over)) {                                  // > $50k → third-party docs, no self-cert
+        addF(over,'bank_statement');
+        ask('q5_1', boolQ('Assets','Does the household have any bank / financial accounts (checking, savings, cash beyond de minimis)?')); // informational — covered by bank_statement
+        const rp = ask('q5_2', boolQ('Assets','Does any member own real property (a home, land, rental property)?'));
+        if (yes(rp)) { addF(rp,'homeowner_docs','appraisal');
+          const mg = ask('q5_2a', boolQ('Assets','Is the property mortgaged?'));                  if (yes(mg)) addF(mg,'mortgage');
+          const ls = ask('q5_2b', boolQ('Assets','Is the property currently listed for sale?'));   if (yes(ls)) addF(ls,'listing_contract');
+          const rt = ask('q5_2c', boolQ('Assets','Is the property rented out (produces rental income)?')); if (yes(rt)) addF(rt,'rental_worksheet'); }
+      } else {
+        add('asset_cert');                              // ≤ $50k → self-cert only; tree says skip Q5.1/Q5.2 → Q5.3
+      }
+      ask('q5_3', boolQ('Assets','Has any member disposed of an asset for less than fair-market value in the last 2 years?')); // no doc in the 44-list — audit note only
+    }
+  } catch (e) { if (e !== Q_STOP) throw e; }
+
+  return { required, uncertain, visited, members, program, pending, complete: pending === null };
+}
+
+// ─── Questionnaire rendering ──────────────────────────────────────────────────
+function qShowPage(id) {
+  document.getElementById('steps-indicator').style.display = 'none';
+  document.querySelectorAll('.step-page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function renderQuestionnaire() {
+  const r = walkQuestionnaire(state.qa);
+  // Prune answers left behind by an abandoned branch (anything not consumed this walk).
+  Object.keys(state.qa).forEach(k => { if (!r.visited.includes(k)) delete state.qa[k]; });
+
+  if (r.complete) {
+    state.required = r.required;
+    state.questionnaire = r;
+    renderQuestionnaireDone(r);
+    return;
+  }
+
+  qShowPage('stepq');
+  const q = r.pending;
+  document.getElementById('q-progress').textContent = `${q.section} · question ${r.visited.length + 1}`;
+  document.getElementById('q-text').textContent = q.text;
+
+  const opts = q.type === 'boolean'
+    ? [{ value:'yes', label:'Yes' }, { value:'no', label:'No' },
+       { value:'maybe', label:'Not sure', hint:'counts the document as required' }]
+    : q.options;
+
+  const wrap = document.getElementById('q-options');
+  wrap.innerHTML = '';
+  opts.forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'q-opt';
+    b.innerHTML = o.label + (o.hint ? ` <span class="q-opt-hint">— ${o.hint}</span>` : '');
+    b.addEventListener('click', () => { state.qa[q.key] = o.value; renderQuestionnaire(); });
+    wrap.appendChild(b);
+  });
+
+  document.getElementById('q-back').style.visibility = r.visited.length ? 'visible' : 'hidden';
+}
+
+function renderQuestionnaireDone(r) {
+  qShowPage('stepq-done');
+  const docs = DOCS.filter(d => r.required.has(d.id)).sort((a, b) => a.order - b.order);
+  document.getElementById('qd-sub').textContent =
+    `${docs.length} document${docs.length !== 1 ? 's' : ''} required for this household` +
+    (r.members.length ? ` · ${r.members.length} member${r.members.length !== 1 ? 's' : ''}` : '') +
+    (r.program ? ` · ${r.program}` : '');
+
+  document.getElementById('qd-list').innerHTML = docs.map(d => `
+    <div class="checklist-item">
+      <div class="item-num">${d.order}</div>
+      <div class="item-status status-found">✓</div>
+      <div class="item-name">${d.name}${r.uncertain.has(d.id) ? '<span class="q-uncertain">⚠ not sure — verify</span>' : ''}</div>
+    </div>`).join('');
+}
+
+// "Back"/"Edit last answer": drop the most recently consumed answer and re-render.
+function questionnaireBack() {
+  const r = walkQuestionnaire(state.qa);
+  const last = r.visited[r.visited.length - 1];
+  if (last) delete state.qa[last];
+  renderQuestionnaire();
+}
+document.getElementById('q-back').addEventListener('click', questionnaireBack);
+document.getElementById('qd-edit').addEventListener('click', questionnaireBack);
+document.getElementById('qd-continue').addEventListener('click', () => {
+  document.getElementById('steps-indicator').style.display = '';
+  goToStep(1);   // hand off from the questionnaire to the upload/OCR/check-files pipeline
+});
+
+// ─── Pill selection ──────────────────────────────────────────────────────────
+document.querySelectorAll('.pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const group = btn.dataset.group;
+    const value = btn.dataset.value;
+
+    if (group === 'program') {
+      document.querySelectorAll('[data-group="program"]').forEach(b => b.classList.remove('selected'));
+      btn.classList.toggle('selected');
+      state.profile.program = btn.classList.contains('selected') ? value : null;
+    } else if (group === 'income') {
+      btn.classList.toggle('selected');
+      if (btn.classList.contains('selected')) state.profile.income.add(value);
+      else state.profile.income.delete(value);
+    } else if (group === 'conditions') {
+      // assets_under_50k and assets_over_50k are mutually exclusive — clicking one deselects the other.
+      const ASSET_PAIR = ['assets_under_50k', 'assets_over_50k'];
+      if (ASSET_PAIR.includes(value)) {
+        const other = ASSET_PAIR.find(v => v !== value);
+        const otherBtn = document.querySelector(`[data-group="conditions"][data-value="${other}"]`);
+        if (otherBtn) { otherBtn.classList.remove('selected'); state.profile.conditions.delete(other); }
+      }
+      btn.classList.toggle('selected');
+      if (btn.classList.contains('selected')) state.profile.conditions.add(value);
+      else state.profile.conditions.delete(value);
+    }
+  });
+});
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function goToStep(n) {
+  document.querySelectorAll('.step-page').forEach(p => p.classList.remove('active'));
+  document.getElementById('step' + n).classList.add('active');
+  state.currentStep = n;
+
+  // Update step indicators
+  for (let i = 1; i <= 3; i++) {
+    const ind = document.getElementById('step-indicator-' + i);
+    ind.classList.remove('active', 'done');
+    if (i === n) ind.classList.add('active');
+    else if (i < n) ind.classList.add('done');
+  }
+}
+
+// btn-to-step2: enabled after page-1 scan completes
+document.getElementById('btn-to-step2').addEventListener('click', () => {
+  document.getElementById('auto-detect-banner').style.display = 'block';
+  goToStep(2);
+});
+document.getElementById('btn-to-step1').addEventListener('click', () => goToStep(1));
+
+// "Check files →": pages are already OCR'd (during upload) — just render results.
+document.getElementById('btn-check-files').addEventListener('click', () => {
+  goToStep(3);
+  showResults();
+});
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+  state.pdfPages = [];
+  state.pdfName = '';
+  state.pdfFile = null;
+  state.profile = { program: null, income: new Set(), conditions: new Set() };
+  state.qa = {};
+  state.required = new Set();
+  state.questionnaire = null;
+  state.checklistProfile = null;
+  state.bankStatementPages = [];
+  state.bankTransactions = [];
+  state.bankReview = [];
+  document.querySelectorAll('.pill.selected').forEach(p => p.classList.remove('selected'));
+  document.getElementById('file-count-display').innerHTML = '';
+  document.getElementById('scan-progress').style.display = 'none';
+  document.getElementById('auto-detect-banner').style.display = 'none';
+  document.getElementById('btn-to-step2').disabled = true;
+  document.getElementById('ocr-loading').style.display = 'none';
+  document.getElementById('results-container').style.display = 'none';
+  fileInput.value = '';
+  renderQuestionnaire();   // start over returns to the intake questionnaire (now the entry point)
+});
+
+// ─── File handling ───────────────────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+document.getElementById('browseBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') processUpload(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) processUpload(fileInput.files[0]);
+});
+
+// ─── Upload pipeline ─────────────────────────────────────────────────────────
+// Order per CLAUDE.md "New pipeline": after the questionnaire, on upload we
+//   (1) OCR the WHOLE document up front (all pages), THEN
+//   (2) locate + read the checklist cover page (the audit input).
+// Both run on drop so the slow OCR happens once, up front. "Check files" then just
+// renders the missing/order results from the already-OCR'd pages (no second pass).
+// NOTE: the checklist read still populates the profile pills (state.profile) here —
+// not for required-ness (the questionnaire owns that via state.required), but because
+// the checklist↔file crossCheck (condSiblings) and docsImpliedByChecklist still read
+// state.profile/conditions. The Feature-A role-flip is done: required-ness reads
+// state.required and the checklist is audited against it (auditChecklistVsQuestionnaire).
+
+// OCR every page via the SSE endpoint; resolves to the per-page text array.
+function ocrAllPages(file, onProgress) {
+  return new Promise(async (resolve, reject) => {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    try {
+      const response = await fetch('/api/ocr', { method: 'POST', body: formData });
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+          if (data.error) throw new Error(data.error);
+          if (data.done) { resolve(data.pageTexts); return; }
+          if (data.progress !== undefined && onProgress) onProgress(data.progress, data.total);
+        }
+      }
+      reject(new Error('OCR stream ended without a result'));
+    } catch (err) { reject(err); }
+  });
+}
+
+// Locate + dual-DPI read the checklist cover page (Feature A mechanics, unchanged).
+async function scanChecklist(file) {
+  const formData = new FormData();
+  formData.append('pdf', file);
+  const res = await fetch('/api/scan-checklist', { method: 'POST', body: formData });
+  if (!res.ok) throw new Error(`Server error: ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+async function processUpload(file) {
+  state.pdfFile = file;
+  state.pdfName = file.name;
+  state.pdfPages = [];
+  state.checklistProfile = null;
+  document.getElementById('btn-to-step2').disabled = true;
+  document.getElementById('file-count-display').innerHTML = '';
+
+  const progress = document.getElementById('scan-progress');
+  const bar = document.getElementById('scan-progress-bar');
+  const label = document.getElementById('scan-progress-label');
+  progress.style.display = 'block';
+  bar.style.width = '0%';
+  label.textContent = 'Starting OCR…';
+
+  try {
+    // (1) OCR the whole document up front.
+    const pages = await ocrAllPages(file, (done, total) => {
+      bar.style.width = Math.round((done / total) * 90) + '%';   // reserve last 10% for the checklist read
+      label.textContent = `OCR: page ${done} of ${total}…`;
+    });
+    state.pdfPages = pages;
+
+    // (2) Locate + read the checklist cover page (audit input, vs. the questionnaire).
+    label.textContent = 'Locating checklist cover page…';
+    bar.style.width = '95%';
+    const data = await scanChecklist(file);
+    state.checklistProfile = data.profile;                       // null ⇒ needs_manual_review
+    if (data.profile) applyDetectedProfile(data.profile);        // populates state.profile pills (used by crossCheck/docsImpliedByChecklist, not required-ness)
+
+    bar.style.width = '100%';
+    label.textContent = 'Done.';
+    setTimeout(() => { progress.style.display = 'none'; }, 600);
+
+    const noteParts = [`${pages.length} page${pages.length !== 1 ? 's' : ''} OCR'd`];
+    noteParts.push(data.profile ? `checklist found (page ${data.checklist_page})` : 'checklist not found — manual review');
+    document.getElementById('file-count-display').innerHTML =
+      `<span class="file-count">✓ ${file.name} — ${noteParts.join(', ')}</span>`;
+    document.getElementById('btn-to-step2').disabled = false;
+
+  } catch (err) {
+    progress.style.display = 'none';
+    document.getElementById('file-count-display').innerHTML =
+      `<span style="color:var(--red);font-size:13px;">Error: ${err.message}. Is the server running?</span>`;
+  }
+}
+
+// Apply a detected profile object to the pill UI and state
+function applyDetectedProfile(profile) {
+  document.querySelectorAll('.pill.selected').forEach(p => p.classList.remove('selected'));
+  state.profile = { program: null, income: new Set(), conditions: new Set() };
+
+  if (profile.program) {
+    const pill = document.querySelector(`[data-group="program"][data-value="${profile.program}"]`);
+    if (pill) { pill.classList.add('selected'); state.profile.program = profile.program; }
+  }
+  for (const val of (profile.income || [])) {
+    const pill = document.querySelector(`[data-group="income"][data-value="${val}"]`);
+    if (pill) { pill.classList.add('selected'); state.profile.income.add(val); }
+  }
+  for (const val of (profile.conditions || [])) {
+    const pill = document.querySelector(`[data-group="conditions"][data-value="${val}"]`);
+    if (pill) { pill.classList.add('selected'); state.profile.conditions.add(val); }
+  }
+}
+
+// Step 3 now just renders results from the pages OCR'd up front during processUpload.
+function showResults() {
+  document.getElementById('ocr-loading').style.display = 'none';
+  document.getElementById('results-container').style.display = 'block';
+  if (!state.pdfPages.length) {
+    document.getElementById('results-checklist').innerHTML =
+      `<div class="card" style="border-color:var(--red-border);">
+        <div class="card-title" style="color:var(--red);">No OCR text available</div>
+        <div class="card-subtitle">Re-upload the PDF — OCR did not complete.</div>
+      </div>`;
+    document.getElementById('results-summary').innerHTML = '';
+    return;
+  }
+  renderResults();
+}
+
+// ─── Results rendering ────────────────────────────────────────────────────────
+function renderResults() {
+  const pages = state.pdfPages;
+
+  // Loud guard: required-ness is the questionnaire's declared set, and the startup
+  // gate makes the questionnaire mandatory — so an empty set here means state was
+  // lost (e.g. reload mid-flow), not a valid "nothing required". Surface it instead
+  // of rendering an all-optional result that looks fine. (isRequired() also throws
+  // as a backstop if reached with an empty set.)
+  if (!state.required || state.required.size === 0) {
+    document.getElementById('results-summary').innerHTML = '';
+    document.getElementById('results-checklist').innerHTML =
+      `<div class="card" style="border-color:var(--red-border);">
+        <div class="card-title" style="color:var(--red);">Internal error — no questionnaire result</div>
+        <div class="card-subtitle">The required-document set is empty, which shouldn't happen: the questionnaire is mandatory before upload. App state was likely lost (e.g. the page was reloaded mid-flow). Click "Start over" and complete the questionnaire again.</div>
+      </div>`;
+    return;
+  }
+
+  // Evaluate each doc: find the earliest page its keyword appears on.
+  // Present-scan is UN-GATED — matchDoc runs on ALL docs, not just required ones —
+  // so the cross-check below has an independent presence signal for every roster
+  // doc. `required` stays a SEPARATE axis: missing/order logic still filter on it
+  // (see below), so un-gating cannot change what counts as required or missing.
+  const evaluated = DOCS.map(doc => {
+    const required = isRequired(doc);
+    const match = matchDoc(doc, pages);
+    return {
+      ...doc, required,
+      matchedKw: match ? match.keyword : null,
+      foundPage: match ? match.page : null,
+      weakMatch: match ? match.weak : false,
+    };
+  });
+
+  // Detect bank statement pages for the review workflow (runs on every render;
+  // doesn't depend on required-ness — fires any time bank pages are in the PDF).
+  state.bankStatementPages = findBankStatementPages(pages);
+
+  // Order check: each required+found doc must appear after its direct predecessor.
+  // A doc is only flagged if it appears before the specific doc that should come
+  // immediately before it — not against a global high-water mark.
+  const requiredFound = evaluated
+    .filter(d => d.required && d.foundPage !== null)
+    .sort((a, b) => a.order - b.order);
+
+  for (let i = 0; i < requiredFound.length; i++) {
+    const doc = requiredFound[i];
+    if (i === 0) {
+      doc.outOfOrder = false;
+    } else {
+      const prev = requiredFound[i - 1];
+      if (doc.foundPage < prev.foundPage) {
+        doc.outOfOrder = true;
+        doc.expectedAfter = prev;
+      } else {
+        doc.outOfOrder = false;
+      }
+    }
+  }
+
+  const requiredDocs = evaluated.filter(d => d.required);
+  const foundCount   = requiredDocs.filter(d => d.foundPage !== null).length;
+  const missingCount = requiredDocs.filter(d => d.foundPage === null).length;
+  const oooCount     = requiredDocs.filter(d => d.outOfOrder).length;
+
+  // Summary bar
+  const summaryEl = document.getElementById('results-summary');
+  const allClear = missingCount === 0 && oooCount === 0;
+  const mainClass = allClear ? 'chip-green' : missingCount > 0 ? 'chip-red' : 'chip-yellow';
+  let mainMsg;
+  if (allClear) mainMsg = 'All docs found &amp; in order';
+  else if (missingCount > 0 && oooCount > 0) mainMsg = `${missingCount} missing, ${oooCount} out of order`;
+  else if (missingCount > 0) mainMsg = `${missingCount} required doc${missingCount !== 1 ? 's' : ''} missing`;
+  else mainMsg = `${oooCount} doc${oooCount !== 1 ? 's' : ''} out of order`;
+
+  summaryEl.innerHTML = `
+    <div class="summary-chip ${mainClass}">
+      <span class="num">${allClear ? '✓' : '!'}</span>
+      <span>${mainMsg}</span>
+    </div>
+    <div class="summary-chip chip-green">
+      <span class="num">${foundCount}</span>
+      <span>found in PDF</span>
+    </div>
+    ${missingCount > 0 ? `<div class="summary-chip chip-red"><span class="num">${missingCount}</span><span>missing</span></div>` : ''}
+    ${oooCount > 0 ? `<div class="summary-chip chip-yellow"><span class="num">${oooCount}</span><span>out of order</span></div>` : ''}
+    <div class="summary-chip chip-gray">
+      <span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${state.pdfName}</span>
+    </div>
+  `;
+
+  const checklistEl = document.getElementById('results-checklist');
+  let html = '';
+
+  // ── Missing docs card ──
+  const missing = evaluated.filter(d => d.required && !d.matchedKw);
+  if (missing.length > 0) {
+    html += `<div class="card" style="border-color:var(--red-border);">
+      <div class="card-title" style="color:var(--red);">&#x274C; Missing required documents (${missing.length})</div>
+      <div class="card-subtitle">These must be present before the file can be submitted to compliance.</div>
+      <div class="checklist">`;
+    missing.forEach(doc => {
+      html += `
+        <div class="checklist-item item-missing">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status status-missing">✗</div>
+          <div class="item-name">${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}</div>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // ── Out-of-order docs card ──
+  const outOfOrder = evaluated.filter(d => d.outOfOrder);
+  if (outOfOrder.length > 0) {
+    html += `<div class="card" style="border-color:var(--yellow-border);">
+      <div class="card-title" style="color:var(--yellow);">&#x26A0; Out-of-order documents (${outOfOrder.length})</div>
+      <div class="card-subtitle">These documents were found but appear on a page earlier than expected. Re-scan them in the order shown below.</div>
+      <div class="checklist">`;
+    outOfOrder.forEach(doc => {
+      html += `
+        <div class="checklist-item item-out-of-order">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status status-warning">&#x26A0;</div>
+          <div class="item-name">
+            ${doc.name}
+            <div class="matched-file">found on page ${doc.foundPage} — should come after "${doc.expectedAfter.name}" (page ${doc.expectedAfter.foundPage})</div>
+          </div>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // ── Checklist ↔ FILE advisory (ADVISORY ONLY — original Task-3 cross-check) ──
+  // Independent of the questionnaire: compares the CHECKLIST's checked boxes against
+  // what the file actually evidences (matchDoc presence). This is the only signal
+  // that can catch a wrong questionnaire answer — if the manager answers a question
+  // wrong AND the checklist box agrees (both wrong), the checklist↔questionnaire
+  // audit stays silent, but file-presence here still surfaces the mismatch. `required`
+  // fed to crossCheck is CHECKLIST-implied (incl. baseline), preserving its original
+  // "marked required by the checklist" semantics.
+  if (state.checklistProfile) {
+    const clSets = {
+      program: state.checklistProfile.program || null,
+      income: new Set(state.checklistProfile.income || []),
+      conditions: new Set(state.checklistProfile.conditions || []),
+    };
+    const evalForChecklist = evaluated.map(d => ({ ...d, required: isRequiredByConditions(d, clSets) }));
+    // direction1 is dormant (retired — see crossCheck): it is always empty, so the card
+    // renders on dir2 alone and the direction1.forEach below is a deliberate no-op kept
+    // ready for revival. The card never renders empty (the length guard requires >0 total).
+    const { direction1, direction2 } = crossCheck(evalForChecklist, pages);
+    if (direction1.length > 0 || direction2.length > 0) {
+      html += `<div class="card" style="border-color:var(--blue-border);">
+        <div class="card-title" style="color:var(--blue);">&#x2139;&#xFE0F; Checklist cross-check — checklist vs. file (${direction1.length + direction2.length})</div>
+        <div class="card-subtitle">The cover-page checkbox reads disagree with what this file actually contains. These are not pass/fail — glance at the cover-page checkbox for each.</div>
+        <div class="checklist">`;
+      direction1.forEach(doc => {
+        html += `
+          <div class="checklist-item">
+            <div class="item-num">${doc.order}</div>
+            <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
+            <div class="item-name">
+              ${doc.name}
+              <div class="matched-file">marked <strong>required</strong> by the checklist, but nothing in this file supports it — verify the cover-page checkbox isn't a misread.</div>
+            </div>
+          </div>`;
+      });
+      direction2.forEach(doc => {
+        html += `
+          <div class="checklist-item">
+            <div class="item-num">${doc.order}</div>
+            <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
+            <div class="item-name">
+              ${doc.name}
+              <div class="matched-file">found in this file (page ${doc.foundPage}, strong match) but the checklist marks it <strong>not required</strong> — verify the cover-page checkbox wasn't missed.</div>
+            </div>
+          </div>`;
+      });
+      html += `</div></div>`;
+    }
+  }
+
+  // ── Checklist ↔ QUESTIONNAIRE audit (ADVISORY ONLY — never a pass/fail) ──
+  // The checklist cover page is now an AUDIT of the questionnaire's declared set,
+  // not the source of required-ness. Flag where the cover-page checkboxes disagree
+  // with the questionnaire answers so a human can reconcile them at the cover page.
+  // Kept VISIBLY SEPARATE from the checklist↔file card above so it's clear which
+  // disagreement (vs. file, vs. questionnaire) is which.
+  const audit = auditChecklistVsQuestionnaire();
+  if (audit === null) {
+    html += `<div class="card" style="border-color:var(--yellow-border);">
+      <div class="card-title" style="color:var(--yellow);">&#x26A0; Checklist cover page not located</div>
+      <div class="card-subtitle">Couldn't find the FILE APPROVAL CHECKLIST page, so its checkboxes can't be cross-checked against the questionnaire. Verify the cover page is present and legible.</div>
+    </div>`;
+  } else if (audit.dirA.length > 0 || audit.dirB.length > 0) {
+    html += `<div class="card" style="border-color:var(--blue-border);">
+      <div class="card-title" style="color:var(--blue);">&#x2139;&#xFE0F; Checklist cross-check — checklist vs. your answers (${audit.dirA.length + audit.dirB.length})</div>
+      <div class="card-subtitle">The cover-page checkboxes disagree with the questionnaire. The questionnaire governs what's required — these are not pass/fail; glance at the cover-page checkbox for each to reconcile.</div>
+      <div class="checklist">`;
+    audit.dirA.forEach(doc => {
+      html += `
+        <div class="checklist-item">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
+          <div class="item-name">
+            ${doc.name}
+            <div class="matched-file"><strong>required</strong> by your questionnaire answers, but the checklist box reads <strong>unchecked</strong> — verify the cover-page checkbox isn't a misread or a data-entry miss.</div>
+          </div>
+        </div>`;
+    });
+    audit.dirB.forEach(doc => {
+      html += `
+        <div class="checklist-item">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
+          <div class="item-name">
+            ${doc.name}
+            <div class="matched-file"><strong>checked</strong> on the checklist, but your questionnaire answers say it's <strong>not required</strong> — verify the questionnaire answer or the cover-page checkbox.</div>
+          </div>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+
+  // ── Bank statement transaction review ──
+  if (state.bankStatementPages.length > 0) {
+    html += `<div class="card" id="bank-stmt-card" style="border-color:var(--yellow-border);">
+      <div class="card-title" style="color:var(--yellow);">Bank Statement Transactions</div>
+      <div class="card-subtitle">Bank statement pages detected (${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''}). Review each deposit and transfer to classify income sources.</div>
+      <button class="btn btn-primary" id="btn-review-bank">Review Transactions &#x2192;</button>
+    </div>`;
+  }
+
+  // ── Full ordered checklist ──
+  html += `<div class="card">
+    <div class="card-title">Complete document checklist — correct order</div>
+    <div class="card-subtitle">Documents should be scanned in this order. Page numbers show where each was found in this PDF.</div>
+    <div class="checklist">`;
+
+  evaluated.forEach(doc => {
+    if (!doc.required) {
+      html += `
+        <div class="checklist-item item-not-required">
+          <div class="item-num">${doc.order ?? '—'}</div>
+          <div class="item-status status-not-required">—</div>
+          <div class="item-name">${doc.name}</div>
+          <span class="item-badge badge-optional">not applicable</span>
+        </div>`;
+    } else if (doc.outOfOrder) {
+      html += `
+        <div class="checklist-item item-out-of-order">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status status-warning">&#x26A0;</div>
+          <div class="item-name">
+            ${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}
+            <div class="matched-file">matched: "${doc.matchedKw}" — page ${doc.foundPage} (should come after "${doc.expectedAfter.name}" on page ${doc.expectedAfter.foundPage})${doc.weakMatch ? ' · body-text match' : ''}</div>
+          </div>
+          <span class="item-badge badge-warning">out of order</span>
+        </div>`;
+    } else if (doc.matchedKw) {
+      html += `
+        <div class="checklist-item item-found">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status status-found">✓</div>
+          <div class="item-name">
+            ${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}
+            <div class="matched-file">matched: "${doc.matchedKw}" — page ${doc.foundPage}${doc.weakMatch ? ' · body-text match, verify manually' : ''}</div>
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="checklist-item item-missing">
+          <div class="item-num">${doc.order}</div>
+          <div class="item-status status-missing">✗</div>
+          <div class="item-name">${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}</div>
+        </div>`;
+    }
+  });
+
+  html += `</div></div>`;
+  checklistEl.innerHTML = html;
+
+  // Wire bank review button if bank statement pages were detected
+  const bankBtn = document.getElementById('btn-review-bank');
+  if (bankBtn) bankBtn.addEventListener('click', openBankReviewModal);
+}
+
+// ─── Update check (Tier 1: notify-only, cross-platform) ───────────────────────
+// Asks the local backend (which fetches the hosted version manifest) whether a
+// newer build exists, and if so shows a dismissible banner with a download link.
+// Purely a notification — no auto-install. Fails silent: offline, backend not yet
+// updated, or feature unconfigured → nothing is shown and the app is unaffected.
+async function checkForUpdate() {
+  try {
+    const r = await fetch('/api/check-update');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || !d.updateAvailable) return;
+    document.getElementById('update-banner-text').textContent =
+      `A new version is available (${d.latest}). You're on ${d.current}.` +
+      (d.notes ? ' — ' + d.notes : '');
+    const link = document.getElementById('update-banner-link');
+    if (d.downloadUrl) { link.href = d.downloadUrl; link.style.display = ''; }
+    else link.style.display = 'none';
+    document.getElementById('update-banner').style.display = 'flex';
+  } catch (e) { /* offline / older backend without the endpoint → ignore */ }
+}
+document.getElementById('update-banner-dismiss')
+  .addEventListener('click', () => { document.getElementById('update-banner').style.display = 'none'; });
+
+// ─── Startup ──────────────────────────────────────────────────────────────────
+// The questionnaire is the entry point: present it immediately on load, before
+// any upload UI. The post-questionnaire pipeline (upload → OCR → checklist read →
+// missing/order check) runs on the hand-off from renderQuestionnaireDone.
+renderQuestionnaire();
+checkForUpdate();
+</script>
+</body>
+</html>

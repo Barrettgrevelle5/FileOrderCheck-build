@@ -1,0 +1,57 @@
+name: Build Windows exe
+
+# Builds the bundled FileOrderCheck.exe on a GitHub-hosted Windows runner.
+# Runs on every push to main and on manual dispatch. The finished .exe is
+# uploaded as a workflow ARTIFACT; the maintainer attaches it to the release in
+# the FileOrderCheck-releases repo (see the repo README).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Install Tesseract (Chocolatey)
+        run: choco install tesseract --no-progress -y
+
+      - name: Install Poppler (Windows binaries)
+        shell: pwsh
+        run: |
+          $ver = '24.08.0-0'
+          $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v$ver/Release-$ver.zip"
+          Invoke-WebRequest -Uri $url -OutFile poppler.zip
+          Expand-Archive -Path poppler.zip -DestinationPath poppler
+          $bin = (Get-ChildItem -Path poppler -Recurse -Filter pdftoppm.exe | Select-Object -First 1).DirectoryName
+          if (-not $bin) { throw "pdftoppm.exe not found after extracting Poppler" }
+          "POPPLER_BIN=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "POPPLER_BIN=$bin"
+
+      - name: Build FileOrderCheck.exe
+        shell: pwsh
+        env:
+          TESSERACT_BIN: 'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        run: pyinstaller --noconfirm --clean FileOrderCheck-windows.spec
+
+      - name: Stage named artifact
+        shell: pwsh
+        run: Copy-Item dist/FileOrderCheck.exe dist/FileOrderCheck-windows.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileOrderCheck-windows
+          path: dist/FileOrderCheck-windows.exe
+          if-no-files-found: error

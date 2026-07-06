@@ -1,0 +1,5 @@
+flask
+pytesseract
+pdf2image
+Pillow
+rapidfuzz
