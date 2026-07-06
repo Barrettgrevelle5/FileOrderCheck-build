@@ -511,6 +511,7 @@
   }
 
   .q-opt:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+  .q-opt.selected { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
   .q-opt .q-opt-hint { font-weight: 400; color: var(--gray-400); font-size: 12px; }
 
   .q-uncertain { color: var(--yellow); font-size: 11px; font-weight: 600; margin-left: 8px; }
@@ -792,6 +793,15 @@
 </div>
 
 <script>
+// ─── Tunable config ─────────────────────────────────────────────────────────
+// Asset self-certification ceiling. At/under this figure, a household may
+// self-certify assets (Asset Certification form, no third-party verification).
+// Above it, third-party asset verification (Bank Statement or Bank Verification)
+// is required instead. Single source of truth — change only this constant.
+// (2026-07-06: updated from the prior $50,000 to $52,787 per Barrett; a proper
+// tunable-config UI/file is deferred to a later pass.)
+const ASSET_SELF_CERT_THRESHOLD = 52787;
+
 // ─── Document definitions ───────────────────────────────────────────────────
 // conditions: [] = always required
 // conditions: ['employed'] = required only when those profile flags are set
@@ -1005,10 +1015,12 @@ const DOCS = [
   // Child support
   { id: 'child_support_cert', name: 'Child Support / Alimony Certification', conditions: ['child_support'], order: 32,
     keywords: ['child support', 'alimony', 'child support cert', 'cs cert', 'alimony cert'] },
-  // Required only for COURT-ORDERED support (cert Section 2), not for every child-support
-  // household — keyed on new_court_order, not child_support. See the q4_8a gate in
-  // walkQuestionnaire. (Case A: child support present but no court order → not required.)
-  { id: 'payment_history', name: 'Payment History or AG 9L001', conditions: ['new_court_order'], order: 33,
+  // Simplified 2026-07-06 (Barrett): required whenever the member RECEIVES child
+  // support/alimony, full stop — no separate court-order gate. (Previously gated on a
+  // separate "is there a court order" sub-question; that distinction was removed from
+  // walkQuestionnaire — see the q4_8 note there.) Keyed on child_support so the
+  // checklist↔questionnaire audit (CHECKLIST_FLAGS) tracks the same simplified rule.
+  { id: 'payment_history', name: 'Payment History or AG 9L001', conditions: ['child_support'], order: 33,
     keywords: ['payment history', 'ag 9l', 'ag9l', 'ag 9l001', 'support income verification', 'attorney general of texas'],
     exclude: ['provided a payment history'] },
   // 'court order' / 'court ord' (bare) removed 2026-06-22 (FP pass, item 4/5): CONFIRMED LIVE
@@ -1075,7 +1087,10 @@ const DOCS = [
     keywords: ['rental payment', 'rent worksheet', 'rental worksheet', 'rental income affidavit'] },
 
   // Assets
-  { id: 'asset_cert', name: 'Asset Certification (under $50,000)', conditions: ['assets_under_50k'], order: 42,
+  // name reflects the live tunable ASSET_SELF_CERT_THRESHOLD; keywords are left matching
+  // "under 50" etc. because that's the literal wording printed on the physical TDHCA form,
+  // independent of our internal policy threshold used to pick self-cert vs. verification.
+  { id: 'asset_cert', name: `Asset Certification (under $${ASSET_SELF_CERT_THRESHOLD.toLocaleString()})`, conditions: ['assets_under_50k'], order: 42,
     keywords: ['asset cert', 'under 50', 'net family asset', 'tdhca asset', 'asset certification', 'hotma asset'] },
   // 'account statement' added 2026-06-18 (Bug 4): the bank-generated statement's own
   // title is "ACCOUNT STATEMENT" (Case A p35, UFCU), never literally "bank statement"
@@ -1573,7 +1588,11 @@ function walkQuestionnaire(qa) {
   const visited   = [];          // answered keys consumed this walk, in order
   const members   = [];
   let pending = null;
-  const program = qa.q1_1 || null;
+  // q1_1 is multi-select (2026-07-06): a unit is often layered financing (e.g. a
+  // Bond deal is very commonly ALSO a 4% HTC deal), so more than one program can
+  // apply at once and each contributes its own document requirements independently.
+  const programs = new Set(Array.isArray(qa.q1_1) ? qa.q1_1 : []);
+  let bankStatementsProvided = false;
 
   const yes = v => v === 'yes' || v === 'maybe';   // conservative default: Not sure ⇒ require
   const ask = (key, q) => {
@@ -1586,7 +1605,9 @@ function walkQuestionnaire(qa) {
 
   try {
     // ── SECTION 1 — Program & subsidy ──
-    ask('q1_1', { section:'Program & subsidy', text:'Which program funds this unit?', type:'choice',
+    // Multi-select: select every program that funds this unit (layered financing —
+    // e.g. Bond + 4% HTC — is common and each selected program adds its own docs).
+    ask('q1_1', { section:'Program & subsidy', text:'Which program(s) fund this unit? (select all that apply)', type:'multichoice',
       options:[{value:'HTC',label:'HTC / LIHTC'},{value:'BOND',label:'BOND'},{value:'HOME',label:'HOME'}] });
     { const v = ask('q1_2', boolQ('Program & subsidy','Does the household hold a Section 8 / Housing Choice Voucher?'));
       if (yes(v)) addF(v,'section8_verif'); }
@@ -1613,7 +1634,7 @@ function walkQuestionnaire(qa) {
     // ── SECTION 3 — Student status (household-level, per the tree's "is ANY member a student?" form) ──
     { const v = ask('q3_1', boolQ('Student status','Is any household member a full-time student (now or 5+ months this year)?'));
       if (yes(v)) { addF(v,'student_verif');
-        if (program === 'HOME') add('home_student');   // Q3.1a "is this HOME-funded?" carried from Q1.1 — not re-asked
+        if (programs.has('HOME')) add('home_student');  // Q3.1a "is this HOME-funded?" carried from Q1.1 — not re-asked
         const fa = ask('q3_1b', boolQ('Student status','Does the student receive financial aid / scholarships / grants?'));
         if (yes(fa)) { addF(fa,'student_financial');
           const ex = ask('q3_1b_i', boolQ('Student status','Does the aid exceed tuition & required fees (the excess counts as income)?'));
@@ -1653,14 +1674,12 @@ function walkQuestionnaire(qa) {
         const ss  = ask('q4_5' + t, boolQ(who,'Does this member receive Social Security, SSI, or SSDI?'));                    if (yes(ss))  addF(ss,'social_security');
         const pen = ask('q4_6' + t, boolQ(who,'Does this member receive a pension, retirement distribution, or annuity?'));  if (yes(pen)) addF(pen,'pension_verif');
         const ue  = ask('q4_7' + t, boolQ(who,'Does this member receive unemployment benefits?'));                           if (yes(ue))  addF(ue,'unemployment');
-        const cs  = ask('q4_8' + t, boolQ(who,'Does this member receive child support or alimony (or is entitled to it)?'));
-        if (yes(cs)) { addF(cs,'child_support_cert');
-          // Payment History / AG 9L001 is only required for COURT-ORDERED support
-          // (Child Support/Alimony Cert Section 2: "There IS a court-ordered support
-          // agreement (I have provided a payment history)"). A non-court-ordered
-          // arrangement (cert Section 3/4) needs the cert but NOT a payment history,
-          // so payment_history is gated on the court-order answer, not on child support.
-          const co = ask('q4_8a' + t, boolQ(who,'Is there a court order for the support?')); if (yes(co)) addF(co,'court_order','payment_history'); }
+        // Simplified 2026-07-06 (Barrett): documentation hinges only on whether the
+        // member RECEIVES child support/alimony — no separate court-order question.
+        // Previously asked a follow-up "is there a court order" to decide whether
+        // payment_history/court_order applied; that branch is removed.
+        const cs  = ask('q4_8' + t, boolQ(who,'Does this member receive child support or alimony?'));
+        if (yes(cs)) addF(cs,'child_support_cert','payment_history','court_order');
         const gf = ask('q4_9' + t, boolQ(who,'Does this member receive recurring monetary gifts / regular help from outside the household?')); if (yes(gf)) addF(gf,'recurring_gift');
       }
 
@@ -1671,9 +1690,19 @@ function walkQuestionnaire(qa) {
     }
 
     // ── SECTION 5 — Assets (household-level) ──
-    { const over = ask('q5_0', boolQ('Assets',"Are the household's total assets over $50,000? Count ALL assets — the cash value of any real property (home, land, rental property) PLUS bank/financial accounts and other assets, not just liquid cash."));
-      if (yes(over)) {                                  // > $50k → third-party docs, no self-cert
-        addF(over,'bank_statement');
+    { // BOND (multifamily tax-exempt bond) does not allow the self-cert safe harbor —
+      // full third-party asset verification is required regardless of dollar amount.
+      // (2026-07-06, Barrett.) HTC-only households still get the threshold-based choice.
+      const bondAssetVerif = programs.has('BOND');
+      const over = ask('q5_0', boolQ('Assets',`Are the household's total assets over $${ASSET_SELF_CERT_THRESHOLD.toLocaleString()}? Count ALL assets — the cash value of any real property (home, land, rental property) PLUS bank/financial accounts and other assets, not just liquid cash.`));
+      // Asked regardless of the threshold: a bank statement can be in the file
+      // as income-source evidence (direct deposits) even when assets don't require one.
+      // Gates the Review Transactions workflow against what's actually detected in the
+      // scanned file — see the bank-stmt-card mismatch check in renderResults.
+      bankStatementsProvided = yes(ask('q5_0b', boolQ('Assets','Were bank statements included in the file for this household?')));
+      if (bondAssetVerif || yes(over)) {                // BOND, or > threshold → third-party docs, no self-cert
+        add('bank_statement');
+        if (!bondAssetVerif && over === 'maybe') uncertain.add('bank_statement');
         ask('q5_1', boolQ('Assets','Does the household have any bank / financial accounts (checking, savings, cash beyond de minimis)?')); // informational — covered by bank_statement
         const rp = ask('q5_2', boolQ('Assets','Does any member own real property (a home, land, rental property)?'));
         if (yes(rp)) { addF(rp,'homeowner_docs','appraisal');
@@ -1681,13 +1710,13 @@ function walkQuestionnaire(qa) {
           const ls = ask('q5_2b', boolQ('Assets','Is the property currently listed for sale?'));   if (yes(ls)) addF(ls,'listing_contract');
           const rt = ask('q5_2c', boolQ('Assets','Is the property rented out (produces rental income)?')); if (yes(rt)) addF(rt,'rental_worksheet'); }
       } else {
-        add('asset_cert');                              // ≤ $50k → self-cert only; tree says skip Q5.1/Q5.2 → Q5.3
+        add('asset_cert');                              // ≤ threshold, no BOND → self-cert only; tree says skip Q5.1/Q5.2 → Q5.3
       }
       ask('q5_3', boolQ('Assets','Has any member disposed of an asset for less than fair-market value in the last 2 years?')); // no doc in the 44-list — audit note only
     }
   } catch (e) { if (e !== Q_STOP) throw e; }
 
-  return { required, uncertain, visited, members, program, pending, complete: pending === null };
+  return { required, uncertain, visited, members, programs, pending, complete: pending === null, bankStatementsProvided };
 }
 
 // ─── Questionnaire rendering ──────────────────────────────────────────────────
@@ -1714,20 +1743,45 @@ function renderQuestionnaire() {
   document.getElementById('q-progress').textContent = `${q.section} · question ${r.visited.length + 1}`;
   document.getElementById('q-text').textContent = q.text;
 
-  const opts = q.type === 'boolean'
-    ? [{ value:'yes', label:'Yes' }, { value:'no', label:'No' },
-       { value:'maybe', label:'Not sure', hint:'counts the document as required' }]
-    : q.options;
-
   const wrap = document.getElementById('q-options');
   wrap.innerHTML = '';
-  opts.forEach(o => {
-    const b = document.createElement('button');
-    b.className = 'q-opt';
-    b.innerHTML = o.label + (o.hint ? ` <span class="q-opt-hint">— ${o.hint}</span>` : '');
-    b.addEventListener('click', () => { state.qa[q.key] = o.value; renderQuestionnaire(); });
-    wrap.appendChild(b);
-  });
+
+  if (q.type === 'multichoice') {
+    // Toggle buttons + explicit Continue (unlike boolean/choice, a click here doesn't
+    // advance immediately — the user may pick more than one option).
+    const selected = new Set();
+    const continueBtn = document.createElement('button');
+    continueBtn.className = 'btn btn-primary';
+    continueBtn.style.marginTop = '6px';
+    continueBtn.textContent = 'Continue →';
+    continueBtn.disabled = true;
+    continueBtn.addEventListener('click', () => { state.qa[q.key] = Array.from(selected); renderQuestionnaire(); });
+
+    q.options.forEach(o => {
+      const b = document.createElement('button');
+      b.className = 'q-opt';
+      b.innerHTML = o.label;
+      b.addEventListener('click', () => {
+        if (selected.has(o.value)) { selected.delete(o.value); b.classList.remove('selected'); }
+        else { selected.add(o.value); b.classList.add('selected'); }
+        continueBtn.disabled = selected.size === 0;
+      });
+      wrap.appendChild(b);
+    });
+    wrap.appendChild(continueBtn);
+  } else {
+    const opts = q.type === 'boolean'
+      ? [{ value:'yes', label:'Yes' }, { value:'no', label:'No' },
+         { value:'maybe', label:'Not sure', hint:'counts the document as required' }]
+      : q.options;
+    opts.forEach(o => {
+      const b = document.createElement('button');
+      b.className = 'q-opt';
+      b.innerHTML = o.label + (o.hint ? ` <span class="q-opt-hint">— ${o.hint}</span>` : '');
+      b.addEventListener('click', () => { state.qa[q.key] = o.value; renderQuestionnaire(); });
+      wrap.appendChild(b);
+    });
+  }
 
   document.getElementById('q-back').style.visibility = r.visited.length ? 'visible' : 'hidden';
 }
@@ -1738,7 +1792,7 @@ function renderQuestionnaireDone(r) {
   document.getElementById('qd-sub').textContent =
     `${docs.length} document${docs.length !== 1 ? 's' : ''} required for this household` +
     (r.members.length ? ` · ${r.members.length} member${r.members.length !== 1 ? 's' : ''}` : '') +
-    (r.program ? ` · ${r.program}` : '');
+    (r.programs && r.programs.size ? ` · ${Array.from(r.programs).join(' + ')}` : '');
 
   document.getElementById('qd-list').innerHTML = docs.map(d => `
     <div class="checklist-item">
@@ -2226,11 +2280,27 @@ function renderResults() {
 
 
   // ── Bank statement transaction review ──
-  if (state.bankStatementPages.length > 0) {
+  // Gated on the questionnaire's q5_0b answer, cross-checked against what OCR actually
+  // detected. Detection alone used to be enough to open the review workflow; now a
+  // mismatch between "questionnaire says provided" and "pages detected" is surfaced
+  // instead of silently trusting either signal alone.
+  const bankProvided = !!(state.questionnaire && state.questionnaire.bankStatementsProvided);
+  const bankPagesFound = state.bankStatementPages.length > 0;
+  if (bankPagesFound && bankProvided) {
     html += `<div class="card" id="bank-stmt-card" style="border-color:var(--yellow-border);">
       <div class="card-title" style="color:var(--yellow);">Bank Statement Transactions</div>
       <div class="card-subtitle">Bank statement pages detected (${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''}). Review each deposit and transfer to classify income sources.</div>
       <button class="btn btn-primary" id="btn-review-bank">Review Transactions &#x2192;</button>
+    </div>`;
+  } else if (bankPagesFound && !bankProvided) {
+    html += `<div class="card" style="border-color:var(--yellow-border);">
+      <div class="card-title" style="color:var(--yellow);">&#x26A0; Bank statement pages detected, but not declared</div>
+      <div class="card-subtitle">${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''} look like bank statements, but the questionnaire said none were included for this household. Verify — either the questionnaire answer needs correcting, or these are false-positive matches.</div>
+    </div>`;
+  } else if (!bankPagesFound && bankProvided) {
+    html += `<div class="card" style="border-color:var(--yellow-border);">
+      <div class="card-title" style="color:var(--yellow);">&#x26A0; Bank statements declared, but not detected</div>
+      <div class="card-subtitle">The questionnaire said bank statements were included, but no bank statement pages were detected in this file. Verify the pages are present and legible.</div>
     </div>`;
   }
 

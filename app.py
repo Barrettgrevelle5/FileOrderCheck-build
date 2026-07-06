@@ -40,7 +40,7 @@ def resource_path(*parts):
 # ── App version + update check (Tier 1: notify-only) ──────────────────────────
 # APP_VERSION is the single source of truth for "which build is this". Bump it on
 # every release and set the SAME value as "version" in the hosted manifest below.
-APP_VERSION = '2026.07.06'
+APP_VERSION = '2026.07.21'
 
 # URL of the hosted update manifest — a tiny JSON file you control. Leave EMPTY to
 # disable the update check entirely (it becomes a silent no-op). The manifest is
