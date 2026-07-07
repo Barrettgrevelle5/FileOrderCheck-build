@@ -311,28 +311,281 @@
   }
 
   /* Results */
-  .summary-bar {
+  .summary-bar { margin-bottom: 18px; }
+
+  .results-shell {
     display: flex;
-    gap: 12px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 18px;
   }
 
-  .summary-chip {
+  .results-shell .card { margin-bottom: 0; }
+
+  .result-hero {
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,251,255,0.98));
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 38%);
+    gap: 22px;
+    align-items: center;
+    box-shadow: 0 10px 30px rgba(17,24,39,0.05);
+  }
+
+  .result-hero.status-ready {
+    border-color: var(--green-border);
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.98), rgba(240,253,244,0.92));
+  }
+
+  .result-hero.status-fixes {
+    border-color: var(--red-border);
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.98), rgba(254,242,242,0.92));
+  }
+
+  .result-hero.status-review {
+    border-color: var(--yellow-border);
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,251,235,0.92));
+  }
+
+  .result-kicker {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gray-500);
+    margin-bottom: 8px;
+  }
+
+  .result-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .result-status-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .result-status-icon.green { background: var(--green); }
+  .result-status-icon.red { background: var(--red); }
+  .result-status-icon.yellow { background: var(--yellow); }
+
+  .result-title {
+    font-size: 24px;
+    line-height: 1.15;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+
+  .result-subtitle {
+    color: var(--gray-600);
+    font-size: 13px;
+    max-width: 560px;
+  }
+
+  .result-file {
+    margin-top: 12px;
+    display: inline-flex;
+    max-width: 100%;
+    color: var(--gray-500);
+    background: rgba(255,255,255,0.7);
+    border: 1px solid var(--gray-200);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  .result-file span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .result-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .result-metric {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    padding: 12px;
+    min-height: 72px;
+  }
+
+  .result-metric .num {
+    display: block;
+    font-size: 23px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--gray-900);
+    margin-bottom: 6px;
+  }
+
+  .result-metric .label {
+    display: block;
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+
+  .result-metric.green { border-color: var(--green-border); background: var(--green-light); }
+  .result-metric.red { border-color: var(--red-border); background: var(--red-light); }
+  .result-metric.yellow { border-color: var(--yellow-border); background: var(--yellow-light); }
+  .result-metric.blue { border-color: var(--blue-border); background: var(--blue-light); }
+
+  .results-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .results-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 12px;
+  }
+
+  .results-section-title {
+    font-size: 15px;
+    line-height: 1.3;
+    color: var(--gray-900);
+    font-weight: 700;
+  }
+
+  .results-section-note {
+    color: var(--gray-500);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  .section-count {
+    flex-shrink: 0;
+    border: 1px solid var(--gray-200);
+    background: white;
+    color: var(--gray-600);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .result-card-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .result-card-head {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .result-card-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .result-card-icon.red {
+    color: var(--red);
+    background: var(--red-light);
+    border: 1px solid var(--red-border);
+  }
+
+  .result-card-icon.yellow {
+    color: var(--yellow);
+    background: var(--yellow-light);
+    border: 1px solid var(--yellow-border);
+  }
+
+  .result-card-icon.blue {
+    color: var(--blue);
+    background: var(--blue-light);
+    border: 1px solid var(--blue-border);
+  }
+
+  .result-card-icon.green {
+    color: var(--green);
+    background: var(--green-light);
+    border: 1px solid var(--green-border);
+  }
+
+  .result-card-body { margin-top: 14px; }
+
+  .empty-result {
+    border-color: var(--green-border);
+    background: linear-gradient(135deg, white, var(--green-light));
+  }
+
+  .full-checklist-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .full-checklist-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
-    border-radius: var(--radius-lg);
-    font-size: 13px;
-    font-weight: 500;
+    flex-shrink: 0;
   }
 
-  .summary-chip .num {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1;
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 10px;
   }
+
+  .filter-chip {
+    border: 1px solid var(--gray-200);
+    background: white;
+    color: var(--gray-600);
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-chip:hover,
+  .filter-chip.selected {
+    color: var(--blue);
+    border-color: var(--blue-border);
+    background: var(--blue-light);
+  }
+
+  .full-checklist-body { margin-top: 4px; }
+  .full-checklist-card.is-collapsed .full-checklist-body { display: none; }
+  .checklist-item.is-hidden { display: none; }
 
   .chip-green { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
   .chip-red { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
@@ -411,7 +664,89 @@
 
   .item-found .item-name { color: var(--gray-800); }
   .item-missing .item-name { color: var(--red); font-weight: 500; }
-  .item-not-required .item-name { color: var(--gray-400); text-decoration: line-through; }
+  .item-not-required .item-name { color: var(--gray-400); }
+
+  /* ── Checklist ↔ answers discrepancy rows ─────────────────────────────── */
+  .discrepancy-list { display: flex; flex-direction: column; gap: 10px; }
+  .discrepancy-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--gray-200);
+    border-left: 3px solid var(--blue);
+    border-radius: var(--radius);
+    background: var(--gray-50);
+  }
+  .discrepancy-doc {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--gray-900);
+  }
+  .discrepancy-compare {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .discrepancy-compare .vs {
+    color: var(--gray-400);
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .state-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .state-chip .src { font-weight: 500; color: var(--gray-500); }
+  .state-chip.yes { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
+  .state-chip.no  { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+  .discrepancy-action {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--gray-700);
+    line-height: 1.45;
+  }
+  .discrepancy-action .arrow { color: var(--blue); font-weight: 700; flex-shrink: 0; }
+  .discrepancy-action strong { color: var(--gray-900); }
+  .discrepancy-fix {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-top: 2px;
+  }
+  .disc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid var(--blue);
+    background: var(--blue);
+    color: #fff;
+    transition: background .12s, border-color .12s;
+  }
+  .disc-btn:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  .disc-btn.secondary { background: #fff; color: var(--gray-700); border-color: var(--gray-300); }
+  .disc-btn.secondary:hover { border-color: var(--gray-400); background: var(--gray-50); }
+  .disc-fix-note {
+    font-size: 12px;
+    color: var(--gray-500);
+    font-style: italic;
+  }
 
   /* Section headers in results */
   .checklist-section {
@@ -446,12 +781,52 @@
   .item-out-of-order .item-name { color: var(--gray-800); }
   .badge-warning { background: var(--yellow-light); color: var(--yellow); border: 1px solid var(--yellow-border); }
 
+  @media (max-width: 760px) {
+    header {
+      padding: 0 18px;
+    }
+
+    header .subtitle {
+      display: none;
+    }
+
+    .container {
+      padding: 24px 16px;
+    }
+
+    .result-hero {
+      grid-template-columns: 1fr;
+      padding: 18px;
+    }
+
+    .result-title {
+      font-size: 21px;
+    }
+
+    .results-section-head,
+    .full-checklist-head {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .full-checklist-actions {
+      width: 100%;
+    }
+
+    .full-checklist-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
   /* Print styles */
   @media print {
     header { position: static; }
-    .btn, .steps, #step1, #step2, .nav-row { display: none !important; }
+    .btn, .steps, #step1, #step2, .nav-row, .filter-bar, .full-checklist-actions { display: none !important; }
     .container { padding: 0; max-width: 100%; }
     .card { border: 1px solid #ccc; }
+    .result-hero { box-shadow: none; }
+    .full-checklist-card.is-collapsed .full-checklist-body { display: block !important; }
   }
 
   /* Hidden state */
@@ -758,8 +1133,8 @@
         <button class="pill" data-group="conditions" data-value="home_listing">Home is listed for sale</button>
         <button class="pill" data-group="conditions" data-value="renting">Renting out property</button>
         <button class="pill" data-group="conditions" data-value="new_court_order">New court order</button>
-        <button class="pill" data-group="conditions" data-value="assets_under_50k">Assets under $50,000</button>
-        <button class="pill" data-group="conditions" data-value="assets_over_50k">Assets over $50,000</button>
+        <button class="pill" data-group="conditions" data-value="assets_under_50k">Assets under $52,787</button>
+        <button class="pill" data-group="conditions" data-value="assets_over_50k">Assets over $52,787</button>
       </div>
     </div>
 
@@ -1550,9 +1925,26 @@ function docsImpliedByChecklist(profile) {
 function auditChecklistVsQuestionnaire() {
   const implied = docsImpliedByChecklist(state.checklistProfile);
   if (!implied) return null;
+
+  // Assets are a single either/or decision (over- vs under-$52,787), but on the cover
+  // page managers routinely tick BOTH the "Under $52,787 Asset Certification" and the
+  // "Bank Statement / over" boxes. Auditing each asset doc independently then flags the
+  // box the household didn't use as a spurious discrepancy on every file (e.g. an "over"
+  // questionnaire answer perpetually disagreeing with the checked under-box). So audit
+  // assets as ONE unit: if the checklist has the box MATCHING the questionnaire's asset
+  // answer checked, the assets agree — skip both asset docs. Only a checklist that has
+  // ONLY the opposite box (a genuine mismatch) still surfaces. asset_cert ↔ assets_under,
+  // bank_statement ↔ assets_over.
+  const cond = new Set((state.checklistProfile && state.checklistProfile.conditions) || []);
+  const assetsAgree =
+    (state.required.has('bank_statement') && cond.has('assets_over_50k')) ||   // both say "over"
+    (state.required.has('asset_cert')     && cond.has('assets_under_50k'));     // both say "under"
+  const ASSET_DOCS = new Set(['asset_cert', 'bank_statement']);
+
   const dirA = [], dirB = [];
   for (const doc of DOCS) {
     if (!(doc.conditions || []).some(c => CHECKLIST_FLAGS.has(c))) continue;
+    if (assetsAgree && ASSET_DOCS.has(doc.id)) continue;
     const q = state.required.has(doc.id);
     const c = implied.has(doc.id);
     if (q && !c) dirA.push(doc);
@@ -2125,43 +2517,118 @@ function renderResults() {
   const foundCount   = requiredDocs.filter(d => d.foundPage !== null).length;
   const missingCount = requiredDocs.filter(d => d.foundPage === null).length;
   const oooCount     = requiredDocs.filter(d => d.outOfOrder).length;
+  const optionalCount = evaluated.filter(d => !d.required).length;
+
+  const missing = evaluated.filter(d => d.required && !d.matchedKw);
+  const outOfOrder = evaluated.filter(d => d.outOfOrder);
+
+  // The "checklist vs. file" advisory (crossCheck() — "a document is present in the
+  // file but the checklist marks it not-required") was RETIRED from the UI 2026-07-07:
+  // per Barrett, the tool should only surface what's NEEDED and MISSING, not tell the
+  // user a document they filed is "not required." crossCheck() is left defined (and
+  // still unit-tested) but no longer rendered. The kept cross-check is checklist ↔ the
+  // questionnaire answers (auditChecklistVsQuestionnaire), reframed below as explicit
+  // checkbox discrepancies to reconcile.
+  const audit = auditChecklistVsQuestionnaire();
+  const checklistVsQuestionnaireCount = audit === null ? 1 : audit.dirA.length + audit.dirB.length;
+
+  const bankProvided = !!(state.questionnaire && state.questionnaire.bankStatementsProvided);
+  const bankPagesFound = state.bankStatementPages.length > 0;
+  const bankReviewNeeded = bankPagesFound && bankProvided;
+  const bankMismatchFound = (bankPagesFound && !bankProvided) || (!bankPagesFound && bankProvided);
+  const reviewCount = checklistVsQuestionnaireCount + (bankMismatchFound ? 1 : 0);
+  const actionCount = missing.length + outOfOrder.length + (bankReviewNeeded ? 1 : 0);
+
+  let heroClass = 'status-ready';
+  let heroIcon = 'OK';
+  let heroIconClass = 'green';
+  let heroTitle = 'Ready to submit';
+  let heroSubtitle = 'All required documents were found in the expected order, and there are no review notes from the checklist cross-checks.';
+
+  if (missingCount > 0 || oooCount > 0) {
+    heroClass = 'status-fixes';
+    heroIcon = '!';
+    heroIconClass = 'red';
+    heroTitle = 'Needs fixes';
+    heroSubtitle = 'Fix the missing or out-of-order required documents before sending this file to compliance.';
+  } else if (bankReviewNeeded || reviewCount > 0) {
+    heroClass = 'status-review';
+    heroIcon = '!';
+    heroIconClass = 'yellow';
+    heroTitle = 'Needs review';
+    heroSubtitle = 'The required documents are present and in order, but there are checklist or bank-statement items to verify.';
+  }
 
   // Summary bar
   const summaryEl = document.getElementById('results-summary');
-  const allClear = missingCount === 0 && oooCount === 0;
-  const mainClass = allClear ? 'chip-green' : missingCount > 0 ? 'chip-red' : 'chip-yellow';
-  let mainMsg;
-  if (allClear) mainMsg = 'All docs found &amp; in order';
-  else if (missingCount > 0 && oooCount > 0) mainMsg = `${missingCount} missing, ${oooCount} out of order`;
-  else if (missingCount > 0) mainMsg = `${missingCount} required doc${missingCount !== 1 ? 's' : ''} missing`;
-  else mainMsg = `${oooCount} doc${oooCount !== 1 ? 's' : ''} out of order`;
-
   summaryEl.innerHTML = `
-    <div class="summary-chip ${mainClass}">
-      <span class="num">${allClear ? '✓' : '!'}</span>
-      <span>${mainMsg}</span>
-    </div>
-    <div class="summary-chip chip-green">
-      <span class="num">${foundCount}</span>
-      <span>found in PDF</span>
-    </div>
-    ${missingCount > 0 ? `<div class="summary-chip chip-red"><span class="num">${missingCount}</span><span>missing</span></div>` : ''}
-    ${oooCount > 0 ? `<div class="summary-chip chip-yellow"><span class="num">${oooCount}</span><span>out of order</span></div>` : ''}
-    <div class="summary-chip chip-gray">
-      <span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${state.pdfName}</span>
+    <div class="result-hero ${heroClass}">
+      <div>
+        <div class="result-kicker">File approval result</div>
+        <div class="result-title-row">
+          <span class="result-status-icon ${heroIconClass}">${heroIcon}</span>
+          <div class="result-title">${heroTitle}</div>
+        </div>
+        <div class="result-subtitle">${heroSubtitle}</div>
+        <div class="result-file"><span>${state.pdfName}</span></div>
+      </div>
+      <div class="result-metrics">
+        <div class="result-metric green">
+          <span class="num">${foundCount}</span>
+          <span class="label">Required found</span>
+        </div>
+        <div class="result-metric ${missingCount > 0 ? 'red' : ''}">
+          <span class="num">${missingCount}</span>
+          <span class="label">Missing</span>
+        </div>
+        <div class="result-metric ${oooCount > 0 ? 'yellow' : ''}">
+          <span class="num">${oooCount}</span>
+          <span class="label">Out of order</span>
+        </div>
+        <div class="result-metric ${reviewCount > 0 || bankReviewNeeded ? 'blue' : ''}">
+          <span class="num">${reviewCount + (bankReviewNeeded ? 1 : 0)}</span>
+          <span class="label">Review items</span>
+        </div>
+      </div>
     </div>
   `;
 
   const checklistEl = document.getElementById('results-checklist');
-  let html = '';
+  let html = '<div class="results-shell">';
 
-  // ── Missing docs card ──
-  const missing = evaluated.filter(d => d.required && !d.matchedKw);
+  html += `<section class="results-section">
+    <div class="results-section-head">
+      <div>
+        <div class="result-kicker">Action needed</div>
+        <div class="results-section-title">${actionCount > 0 ? 'Fix these items first' : 'No required-document fixes found'}</div>
+        <div class="results-section-note">Missing documents, order issues, and bank-statement review appear here first.</div>
+      </div>
+      <span class="section-count">${actionCount} item${actionCount !== 1 ? 's' : ''}</span>
+    </div>
+    <div class="result-card-stack">`;
+
+  if (actionCount === 0) {
+    html += `<div class="card empty-result">
+      <div class="result-card-head">
+        <div class="result-card-icon green">OK</div>
+        <div>
+          <div class="card-title">Required documents found and in order</div>
+          <div class="card-subtitle" style="margin-bottom:0;">No missing required documents or order corrections were detected.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
   if (missing.length > 0) {
     html += `<div class="card" style="border-color:var(--red-border);">
-      <div class="card-title" style="color:var(--red);">&#x274C; Missing required documents (${missing.length})</div>
-      <div class="card-subtitle">These must be present before the file can be submitted to compliance.</div>
-      <div class="checklist">`;
+      <div class="result-card-head">
+        <div class="result-card-icon red">!</div>
+        <div>
+          <div class="card-title" style="color:var(--red);">Missing required documents (${missing.length})</div>
+          <div class="card-subtitle" style="margin-bottom:0;">These must be present before the file can be submitted to compliance.</div>
+        </div>
+      </div>
+      <div class="result-card-body"><div class="checklist">`;
     missing.forEach(doc => {
       html += `
         <div class="checklist-item item-missing">
@@ -2170,16 +2637,19 @@ function renderResults() {
           <div class="item-name">${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}</div>
         </div>`;
     });
-    html += `</div></div>`;
+    html += `</div></div></div>`;
   }
 
-  // ── Out-of-order docs card ──
-  const outOfOrder = evaluated.filter(d => d.outOfOrder);
   if (outOfOrder.length > 0) {
     html += `<div class="card" style="border-color:var(--yellow-border);">
-      <div class="card-title" style="color:var(--yellow);">&#x26A0; Out-of-order documents (${outOfOrder.length})</div>
-      <div class="card-subtitle">These documents were found but appear on a page earlier than expected. Re-scan them in the order shown below.</div>
-      <div class="checklist">`;
+      <div class="result-card-head">
+        <div class="result-card-icon yellow">!</div>
+        <div>
+          <div class="card-title" style="color:var(--yellow);">Out-of-order documents (${outOfOrder.length})</div>
+          <div class="card-subtitle" style="margin-bottom:0;">These were found, but appear earlier than expected. Re-scan them in the order shown below.</div>
+        </div>
+      </div>
+      <div class="result-card-body"><div class="checklist">`;
     outOfOrder.forEach(doc => {
       html += `
         <div class="checklist-item item-out-of-order">
@@ -2191,137 +2661,146 @@ function renderResults() {
           </div>
         </div>`;
     });
-    html += `</div></div>`;
+    html += `</div></div></div>`;
   }
 
-  // ── Checklist ↔ FILE advisory (ADVISORY ONLY — original Task-3 cross-check) ──
-  // Independent of the questionnaire: compares the CHECKLIST's checked boxes against
-  // what the file actually evidences (matchDoc presence). This is the only signal
-  // that can catch a wrong questionnaire answer — if the manager answers a question
-  // wrong AND the checklist box agrees (both wrong), the checklist↔questionnaire
-  // audit stays silent, but file-presence here still surfaces the mismatch. `required`
-  // fed to crossCheck is CHECKLIST-implied (incl. baseline), preserving its original
-  // "marked required by the checklist" semantics.
-  if (state.checklistProfile) {
-    const clSets = {
-      program: state.checklistProfile.program || null,
-      income: new Set(state.checklistProfile.income || []),
-      conditions: new Set(state.checklistProfile.conditions || []),
-    };
-    const evalForChecklist = evaluated.map(d => ({ ...d, required: isRequiredByConditions(d, clSets) }));
-    // direction1 is dormant (retired — see crossCheck): it is always empty, so the card
-    // renders on dir2 alone and the direction1.forEach below is a deliberate no-op kept
-    // ready for revival. The card never renders empty (the length guard requires >0 total).
-    const { direction1, direction2 } = crossCheck(evalForChecklist, pages);
-    if (direction1.length > 0 || direction2.length > 0) {
-      html += `<div class="card" style="border-color:var(--blue-border);">
-        <div class="card-title" style="color:var(--blue);">&#x2139;&#xFE0F; Checklist cross-check — checklist vs. file (${direction1.length + direction2.length})</div>
-        <div class="card-subtitle">The cover-page checkbox reads disagree with what this file actually contains. These are not pass/fail — glance at the cover-page checkbox for each.</div>
-        <div class="checklist">`;
-      direction1.forEach(doc => {
-        html += `
-          <div class="checklist-item">
-            <div class="item-num">${doc.order}</div>
-            <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
-            <div class="item-name">
-              ${doc.name}
-              <div class="matched-file">marked <strong>required</strong> by the checklist, but nothing in this file supports it — verify the cover-page checkbox isn't a misread.</div>
-            </div>
-          </div>`;
-      });
-      direction2.forEach(doc => {
-        html += `
-          <div class="checklist-item">
-            <div class="item-num">${doc.order}</div>
-            <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
-            <div class="item-name">
-              ${doc.name}
-              <div class="matched-file">found in this file (page ${doc.foundPage}, strong match) but the checklist marks it <strong>not required</strong> — verify the cover-page checkbox wasn't missed.</div>
-            </div>
-          </div>`;
-      });
-      html += `</div></div>`;
-    }
-  }
-
-  // ── Checklist ↔ QUESTIONNAIRE audit (ADVISORY ONLY — never a pass/fail) ──
-  // The checklist cover page is now an AUDIT of the questionnaire's declared set,
-  // not the source of required-ness. Flag where the cover-page checkboxes disagree
-  // with the questionnaire answers so a human can reconcile them at the cover page.
-  // Kept VISIBLY SEPARATE from the checklist↔file card above so it's clear which
-  // disagreement (vs. file, vs. questionnaire) is which.
-  const audit = auditChecklistVsQuestionnaire();
-  if (audit === null) {
-    html += `<div class="card" style="border-color:var(--yellow-border);">
-      <div class="card-title" style="color:var(--yellow);">&#x26A0; Checklist cover page not located</div>
-      <div class="card-subtitle">Couldn't find the FILE APPROVAL CHECKLIST page, so its checkboxes can't be cross-checked against the questionnaire. Verify the cover page is present and legible.</div>
-    </div>`;
-  } else if (audit.dirA.length > 0 || audit.dirB.length > 0) {
-    html += `<div class="card" style="border-color:var(--blue-border);">
-      <div class="card-title" style="color:var(--blue);">&#x2139;&#xFE0F; Checklist cross-check — checklist vs. your answers (${audit.dirA.length + audit.dirB.length})</div>
-      <div class="card-subtitle">The cover-page checkboxes disagree with the questionnaire. The questionnaire governs what's required — these are not pass/fail; glance at the cover-page checkbox for each to reconcile.</div>
-      <div class="checklist">`;
-    audit.dirA.forEach(doc => {
-      html += `
-        <div class="checklist-item">
-          <div class="item-num">${doc.order}</div>
-          <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
-          <div class="item-name">
-            ${doc.name}
-            <div class="matched-file"><strong>required</strong> by your questionnaire answers, but the checklist box reads <strong>unchecked</strong> — verify the cover-page checkbox isn't a misread or a data-entry miss.</div>
-          </div>
-        </div>`;
-    });
-    audit.dirB.forEach(doc => {
-      html += `
-        <div class="checklist-item">
-          <div class="item-num">${doc.order}</div>
-          <div class="item-status" style="color:var(--blue);">&#x2139;&#xFE0F;</div>
-          <div class="item-name">
-            ${doc.name}
-            <div class="matched-file"><strong>checked</strong> on the checklist, but your questionnaire answers say it's <strong>not required</strong> — verify the questionnaire answer or the cover-page checkbox.</div>
-          </div>
-        </div>`;
-    });
-    html += `</div></div>`;
-  }
-
-
-  // ── Bank statement transaction review ──
-  // Gated on the questionnaire's q5_0b answer, cross-checked against what OCR actually
-  // detected. Detection alone used to be enough to open the review workflow; now a
-  // mismatch between "questionnaire says provided" and "pages detected" is surfaced
-  // instead of silently trusting either signal alone.
-  const bankProvided = !!(state.questionnaire && state.questionnaire.bankStatementsProvided);
-  const bankPagesFound = state.bankStatementPages.length > 0;
-  if (bankPagesFound && bankProvided) {
+  if (bankReviewNeeded) {
     html += `<div class="card" id="bank-stmt-card" style="border-color:var(--yellow-border);">
-      <div class="card-title" style="color:var(--yellow);">Bank Statement Transactions</div>
-      <div class="card-subtitle">Bank statement pages detected (${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''}). Review each deposit and transfer to classify income sources.</div>
-      <button class="btn btn-primary" id="btn-review-bank">Review Transactions &#x2192;</button>
+      <div class="result-card-head">
+        <div class="result-card-icon yellow">!</div>
+        <div>
+          <div class="card-title" style="color:var(--yellow);">Bank Statement Transactions</div>
+          <div class="card-subtitle" style="margin-bottom:0;">Bank statement pages detected (${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''}). Review each deposit and transfer to classify income sources.</div>
+        </div>
+      </div>
+      <div class="result-card-body">
+        <button class="btn btn-primary" id="btn-review-bank">Review Transactions &#x2192;</button>
+      </div>
     </div>`;
-  } else if (bankPagesFound && !bankProvided) {
-    html += `<div class="card" style="border-color:var(--yellow-border);">
-      <div class="card-title" style="color:var(--yellow);">&#x26A0; Bank statement pages detected, but not declared</div>
-      <div class="card-subtitle">${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''} look like bank statements, but the questionnaire said none were included for this household. Verify — either the questionnaire answer needs correcting, or these are false-positive matches.</div>
-    </div>`;
-  } else if (!bankPagesFound && bankProvided) {
-    html += `<div class="card" style="border-color:var(--yellow-border);">
-      <div class="card-title" style="color:var(--yellow);">&#x26A0; Bank statements declared, but not detected</div>
-      <div class="card-subtitle">The questionnaire said bank statements were included, but no bank statement pages were detected in this file. Verify the pages are present and legible.</div>
-    </div>`;
+  }
+
+  html += `</div></section>`;
+
+  if (reviewCount > 0) {
+    html += `<section class="results-section">
+      <div class="results-section-head">
+        <div>
+          <div class="result-kicker">Review notes</div>
+          <div class="results-section-title">Verify these cross-checks</div>
+          <div class="results-section-note">These are advisory notes. The questionnaire still governs what is required.</div>
+        </div>
+        <span class="section-count">${reviewCount} note${reviewCount !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="result-card-stack">`;
+
+    if (audit === null) {
+      html += `<div class="card" style="border-color:var(--yellow-border);">
+        <div class="result-card-head">
+          <div class="result-card-icon yellow">!</div>
+          <div>
+            <div class="card-title" style="color:var(--yellow);">Checklist cover page not located</div>
+            <div class="card-subtitle" style="margin-bottom:0;">Couldn't find the FILE APPROVAL CHECKLIST page, so its checkboxes can't be cross-checked against the questionnaire. Verify the cover page is present and legible.</div>
+          </div>
+        </div>
+      </div>`;
+    } else if (audit.dirA.length > 0 || audit.dirB.length > 0) {
+      const discCount = audit.dirA.length + audit.dirB.length;
+      html += `<div class="card" style="border-color:var(--blue-border);">
+        <div class="result-card-head">
+          <div class="result-card-icon blue">i</div>
+          <div>
+            <div class="card-title" style="color:var(--blue);">Cover-page checklist doesn't match your answers (${discCount})</div>
+            <div class="card-subtitle" style="margin-bottom:0;">${discCount === 1 ? 'This box' : 'These boxes'} on the FILE APPROVAL CHECKLIST disagree${discCount === 1 ? 's' : ''} with the questionnaire. Reconcile each one — usually by ticking a box on the cover page, or by correcting the answer.</div>
+          </div>
+        </div>
+        <div class="result-card-body"><div class="discrepancy-list">`;
+      // dirA: your answers say REQUIRED, but the checklist box reads unchecked.
+      audit.dirA.forEach(doc => {
+        html += `
+          <div class="discrepancy-item">
+            <div class="discrepancy-doc">${doc.name}</div>
+            <div class="discrepancy-compare">
+              <span class="state-chip yes"><span class="src">Your answers:</span> Required</span>
+              <span class="vs">vs</span>
+              <span class="state-chip no"><span class="src">Checklist box:</span> Not checked</span>
+            </div>
+            <div class="discrepancy-action"><span class="arrow">&#x2192;</span><span>Tick the <strong>${doc.name}</strong> box on the cover page — or, if it isn't actually required, change your answer here:</span></div>
+            <div class="discrepancy-fix">
+              <button class="disc-btn secondary" data-mark-optional="${doc.id}">Not required after all</button>
+              <span class="disc-fix-note">removes it from your required list</span>
+            </div>
+          </div>`;
+      });
+      // dirB: the checklist box is checked, but your answers say NOT required.
+      audit.dirB.forEach(doc => {
+        html += `
+          <div class="discrepancy-item">
+            <div class="discrepancy-doc">${doc.name}</div>
+            <div class="discrepancy-compare">
+              <span class="state-chip no"><span class="src">Your answers:</span> Not required</span>
+              <span class="vs">vs</span>
+              <span class="state-chip yes"><span class="src">Checklist box:</span> Checked</span>
+            </div>
+            <div class="discrepancy-action"><span class="arrow">&#x2192;</span><span>If this document <strong>is</strong> required, change your answer here — otherwise un-tick the <strong>${doc.name}</strong> box on the cover page.</span></div>
+            <div class="discrepancy-fix">
+              <button class="disc-btn" data-mark-required="${doc.id}">Yes — this is required</button>
+              <span class="disc-fix-note">adds it to your required list</span>
+            </div>
+          </div>`;
+      });
+      html += `</div></div></div>`;
+    }
+
+    if (bankPagesFound && !bankProvided) {
+      html += `<div class="card" style="border-color:var(--yellow-border);">
+        <div class="result-card-head">
+          <div class="result-card-icon yellow">!</div>
+          <div>
+            <div class="card-title" style="color:var(--yellow);">Bank statement pages detected, but not declared</div>
+            <div class="card-subtitle" style="margin-bottom:0;">${state.bankStatementPages.length} page${state.bankStatementPages.length !== 1 ? 's' : ''} look like bank statements, but the questionnaire said none were included for this household. Verify the questionnaire answer or the OCR match.</div>
+          </div>
+        </div>
+      </div>`;
+    } else if (!bankPagesFound && bankProvided) {
+      html += `<div class="card" style="border-color:var(--yellow-border);">
+        <div class="result-card-head">
+          <div class="result-card-icon yellow">!</div>
+          <div>
+            <div class="card-title" style="color:var(--yellow);">Bank statements declared, but not detected</div>
+            <div class="card-subtitle" style="margin-bottom:0;">The questionnaire said bank statements were included, but no bank statement pages were detected in this file. Verify the pages are present and legible.</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    html += `</div></section>`;
   }
 
   // ── Full ordered checklist ──
-  html += `<div class="card">
-    <div class="card-title">Complete document checklist — correct order</div>
-    <div class="card-subtitle">Documents should be scanned in this order. Page numbers show where each was found in this PDF.</div>
-    <div class="checklist">`;
+  html += `<section class="results-section">
+    <div class="card full-checklist-card is-collapsed" id="full-checklist-card">
+      <div class="full-checklist-head">
+        <div>
+          <div class="card-title">Complete document checklist — correct order</div>
+          <div class="card-subtitle" style="margin-bottom:0;">${requiredDocs.length} required document${requiredDocs.length !== 1 ? 's' : ''} · ${optionalCount} not applicable · page numbers show where each was found.</div>
+        </div>
+        <div class="full-checklist-actions">
+          <button class="btn btn-secondary" id="toggle-full-checklist" type="button" aria-expanded="false">Show full checklist</button>
+        </div>
+      </div>
+      <div class="full-checklist-body">
+        <div class="filter-bar" aria-label="Checklist filters">
+          <button class="filter-chip selected" type="button" data-checklist-filter="all">All ${evaluated.length}</button>
+          <button class="filter-chip" type="button" data-checklist-filter="action">Needs action ${missing.length + outOfOrder.length}</button>
+          <button class="filter-chip" type="button" data-checklist-filter="found">Found ${foundCount}</button>
+          <button class="filter-chip" type="button" data-checklist-filter="optional">Not applicable ${optionalCount}</button>
+        </div>
+        <div class="checklist">`;
 
   evaluated.forEach(doc => {
     if (!doc.required) {
       html += `
-        <div class="checklist-item item-not-required">
+        <div class="checklist-item item-not-required" data-checklist-status="optional">
           <div class="item-num">${doc.order ?? '—'}</div>
           <div class="item-status status-not-required">—</div>
           <div class="item-name">${doc.name}</div>
@@ -2329,7 +2808,7 @@ function renderResults() {
         </div>`;
     } else if (doc.outOfOrder) {
       html += `
-        <div class="checklist-item item-out-of-order">
+        <div class="checklist-item item-out-of-order" data-checklist-status="action">
           <div class="item-num">${doc.order}</div>
           <div class="item-status status-warning">&#x26A0;</div>
           <div class="item-name">
@@ -2340,7 +2819,7 @@ function renderResults() {
         </div>`;
     } else if (doc.matchedKw) {
       html += `
-        <div class="checklist-item item-found">
+        <div class="checklist-item item-found" data-checklist-status="found">
           <div class="item-num">${doc.order}</div>
           <div class="item-status status-found">✓</div>
           <div class="item-name">
@@ -2350,7 +2829,7 @@ function renderResults() {
         </div>`;
     } else {
       html += `
-        <div class="checklist-item item-missing">
+        <div class="checklist-item item-missing" data-checklist-status="action">
           <div class="item-num">${doc.order}</div>
           <div class="item-status status-missing">✗</div>
           <div class="item-name">${doc.name}${doc.note ? ` <span style="color:var(--gray-400);font-weight:400;">(${doc.note})</span>` : ''}</div>
@@ -2358,12 +2837,46 @@ function renderResults() {
     }
   });
 
-  html += `</div></div>`;
+  html += `</div></div></div></section></div>`;
   checklistEl.innerHTML = html;
+
+  // Inline "reconcile" actions on the checklist↔answers discrepancy card: let the user
+  // override a required-ness decision right on the review page (the card tells them to
+  // "change your answer" — these buttons are that action). They mutate state.required
+  // directly (a manual override on top of the questionnaire's declared set) and re-render
+  // so the doc moves into/out of the required checklist and its discrepancy row clears.
+  checklistEl.querySelectorAll('[data-mark-required]').forEach(btn => {
+    btn.addEventListener('click', () => { state.required.add(btn.dataset.markRequired); renderResults(); });
+  });
+  checklistEl.querySelectorAll('[data-mark-optional]').forEach(btn => {
+    btn.addEventListener('click', () => { state.required.delete(btn.dataset.markOptional); renderResults(); });
+  });
 
   // Wire bank review button if bank statement pages were detected
   const bankBtn = document.getElementById('btn-review-bank');
   if (bankBtn) bankBtn.addEventListener('click', openBankReviewModal);
+
+  const fullChecklistCard = document.getElementById('full-checklist-card');
+  const fullChecklistToggle = document.getElementById('toggle-full-checklist');
+  if (fullChecklistCard && fullChecklistToggle) {
+    fullChecklistToggle.addEventListener('click', () => {
+      const collapsed = fullChecklistCard.classList.toggle('is-collapsed');
+      fullChecklistToggle.textContent = collapsed ? 'Show full checklist' : 'Hide full checklist';
+      fullChecklistToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+
+    const filterButtons = fullChecklistCard.querySelectorAll('[data-checklist-filter]');
+    const checklistRows = fullChecklistCard.querySelectorAll('[data-checklist-status]');
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filter = btn.dataset.checklistFilter;
+        filterButtons.forEach(b => b.classList.toggle('selected', b === btn));
+        checklistRows.forEach(row => {
+          row.classList.toggle('is-hidden', filter !== 'all' && row.dataset.checklistStatus !== filter);
+        });
+      });
+    });
+  }
 }
 
 // ─── Update check (Tier 1: notify-only, cross-platform) ───────────────────────

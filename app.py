@@ -40,7 +40,7 @@ def resource_path(*parts):
 # ── App version + update check (Tier 1: notify-only) ──────────────────────────
 # APP_VERSION is the single source of truth for "which build is this". Bump it on
 # every release and set the SAME value as "version" in the hosted manifest below.
-APP_VERSION = '2026.07.24'
+APP_VERSION = '2026.07.26'
 
 # URL of the hosted update manifest — a tiny JSON file you control. Leave EMPTY to
 # disable the update check entirely (it becomes a silent no-op). The manifest is
@@ -217,10 +217,20 @@ def scan_checklist():
         text_250 = pytesseract.image_to_string(imgs_250[0], lang='eng')
         p200 = detect_checklist_profile(text_200)
         p250 = detect_checklist_profile(text_250)
+        # Pixel pass (see detect_checklist_profile_pixels): reads each checkbox from
+        # its actual pixels, recovering checked boxes whose glyph Tesseract dropped
+        # (e.g. Case A Special Needs / Bank Statement). Run on the 250-DPI image —
+        # sharper box edges. UNIONed with the text passes below: a box is checked if
+        # the text OR the pixel pass sees it checked. The mutual-exclusion dedup that
+        # detect_checklist_profile applies to the TEXT pass is deliberately NOT
+        # re-applied here — managers on the real files check both the under- and
+        # over-threshold asset boxes, and the pixel pass reads both correctly; nulling
+        # them would resurface the very false "checkbox unchecked" advisory this fixes.
+        ppix = detect_checklist_profile_pixels(imgs_250[0])
         profile = {
             'program':    p200['program'] or p250['program'],
-            'income':     list(dict.fromkeys(p200['income'] + p250['income'])),
-            'conditions': list(dict.fromkeys(p200['conditions'] + p250['conditions'])),
+            'income':     list(dict.fromkeys(p200['income'] + p250['income'] + ppix['income'])),
+            'conditions': list(dict.fromkeys(p200['conditions'] + p250['conditions'] + ppix['conditions'])),
         }
         return jsonify({
             'profile': profile,
@@ -694,6 +704,48 @@ def locate_checklist_page(pdf_bytes, max_pages=10, threshold=0.55, early_exit=0.
 
 # ── Checklist detection logic ─────────────────────────────────────────────────
 
+# Each entry: (profile_value, group, [keywords_to_try_most_specific_first]).
+# Shared by BOTH the text pass (detect_checklist_profile → _is_checked) and the
+# pixel pass (detect_checklist_profile_pixels): the keyword strings double as the
+# label phrases the pixel pass locates via image_to_data before measuring the box.
+CHECKLIST_ITEMS = [
+    # Income sources
+    ('employed',        'income', ['Employment Verification', 'Paystubs']),
+    ('school_employee', 'income', ['School Employee Questionnaire', 'School Employee']),
+    ('self_employed',   'income', ['Self-Employment Affidavit', 'Self Employment Affidavit']),
+    ('new_business',    'income', ['Profit and Loss if New Business']),
+    ('gig_income',      'income', ['Gig Income Verification', 'Gig Income']),
+    ('social_security', 'income', ['Social Security or Retirement Verification']),
+    ('pension',         'income', ['Pension / Retirement Benefit', 'Pension Verification']),
+    ('section8',        'income', ['Income Verification for Households with Section 8']),
+    ('zero_income',     'income', ['Certification of Zero Income']),
+    ('non_employed',    'income', ['Non-Employed Certification']),
+    ('unemployment',    'income', ['Unemployment Benefits Verification']),
+    ('tips',            'income', ['Tips and Commissions Affidavit']),
+    ('child_support',   'income', ['Child Support/Alimony Certification',
+                                   'Child Support Alimony Certification']),
+    ('recurring_gift',  'income', ['Recurring Gift Affidavit']),
+    ('rental_income',   'income', ['Rental Payment Worksheet']),
+
+    # Household conditions
+    ('special_needs',      'conditions', ['Special Needs Certification']),
+    ('live_in_aide',       'conditions', ['Live in Care Attendant Affidavit',
+                                          'Live-in Care Attendant Affidavit']),
+    ('marital_separation', 'conditions', ['Marital Separation Certification',
+                                          'Maritial Separation Certification']),
+    ('student',            'conditions', ['Student Verification', 'Certification of Student Eligibility']),
+    ('has_minor_children', 'conditions', ['Birth Certificate', 'Minor Child']),
+    # 'multiple_adults' removed 2026-06-18 (Bug 5): no such required doc — adult count
+    # affects the RIS income threshold, not the document set. Nothing reads this flag.
+    ('homeowner',          'conditions', ['Home Ownership Documents']),
+    ('home_listing',       'conditions', ['Listing Contract']),
+    ('new_court_order',    'conditions', ['Court Order']),
+    ('assets_under_50k',   'conditions', [r'Under .{0,3}50,000 Asset',
+                                          'Under 50,000 Asset Certification']),
+    ('assets_over_50k',    'conditions', ['Bank Statement or Bank Verification']),
+]
+
+
 def detect_checklist_profile(text: str) -> dict:
     """
     Parse page 1 OCR from the Bonner Carrington FILE APPROVAL CHECKLIST.
@@ -742,45 +794,8 @@ def detect_checklist_profile(text: str) -> dict:
             break
 
     # ── Checklist items ───────────────────────────────────────────────────────
-    # Each entry: (profile_value, group, [keywords_to_try_most_specific_first])
-    ITEMS = [
-        # Income sources
-        ('employed',        'income', ['Employment Verification', 'Paystubs']),
-        ('school_employee', 'income', ['School Employee Questionnaire', 'School Employee']),
-        ('self_employed',   'income', ['Self-Employment Affidavit', 'Self Employment Affidavit']),
-        ('new_business',    'income', ['Profit and Loss if New Business']),
-        ('gig_income',      'income', ['Gig Income Verification', 'Gig Income']),
-        ('social_security', 'income', ['Social Security or Retirement Verification']),
-        ('pension',         'income', ['Pension / Retirement Benefit', 'Pension Verification']),
-        ('section8',        'income', ['Income Verification for Households with Section 8']),
-        ('zero_income',     'income', ['Certification of Zero Income']),
-        ('non_employed',    'income', ['Non-Employed Certification']),
-        ('unemployment',    'income', ['Unemployment Benefits Verification']),
-        ('tips',            'income', ['Tips and Commissions Affidavit']),
-        ('child_support',   'income', ['Child Support/Alimony Certification',
-                                       'Child Support Alimony Certification']),
-        ('recurring_gift',  'income', ['Recurring Gift Affidavit']),
-        ('rental_income',   'income', ['Rental Payment Worksheet']),
-
-        # Household conditions
-        ('special_needs',      'conditions', ['Special Needs Certification']),
-        ('live_in_aide',       'conditions', ['Live in Care Attendant Affidavit',
-                                              'Live-in Care Attendant Affidavit']),
-        ('marital_separation', 'conditions', ['Marital Separation Certification',
-                                              'Maritial Separation Certification']),
-        ('student',            'conditions', ['Student Verification', 'Certification of Student Eligibility']),
-        ('has_minor_children', 'conditions', ['Birth Certificate', 'Minor Child']),
-        # 'multiple_adults' removed 2026-06-18 (Bug 5): no such required doc — adult count
-        # affects the RIS income threshold, not the document set. Nothing reads this flag.
-        ('homeowner',          'conditions', ['Home Ownership Documents']),
-        ('home_listing',       'conditions', ['Listing Contract']),
-        ('new_court_order',    'conditions', ['Court Order']),
-        ('assets_under_50k',   'conditions', [r'Under .{0,3}50,000 Asset',
-                                              'Under 50,000 Asset Certification']),
-        ('assets_over_50k',    'conditions', ['Bank Statement or Bank Verification']),
-    ]
-
-    for value, group, keywords in ITEMS:
+    # Item table is module-level (CHECKLIST_ITEMS) so the pixel pass shares it.
+    for value, group, keywords in CHECKLIST_ITEMS:
         if _is_checked(text, keywords):
             if group == 'income' and value not in profile['income']:
                 profile['income'].append(value)
@@ -880,6 +895,143 @@ def _is_checked(text: str, keywords: list) -> bool:
         continue  # punctuation → regular text, this occurrence unchecked
 
     return False  # no keyword's box read as checked
+
+
+# ── Pixel-based checkbox detection ────────────────────────────────────────────
+# The text pass above reads the checkbox from the CHARACTER Tesseract transcribes
+# in front of the label ('@', a digit, 'O', …). Tesseract frequently DROPS the
+# checkmark glyph entirely (it emits nothing before the label), and on this form's
+# two-column layout an empty-vs-checked box is then indistinguishable from text —
+# e.g. Case A's Special Needs and Bank Statement boxes are visibly checked (☑) but
+# their glyph is lost at every DPI, so the text pass reads them UNCHECKED. Those are
+# false negatives no text heuristic can fix (an empty-prefix box is genuinely
+# ambiguous: on the same page, Special Needs is checked-but-dropped while Student
+# Verification is unchecked-and-dropped).
+#
+# So we ALSO look at the actual pixels: find each label's bounding box via
+# image_to_data, then measure ink in the CENTER of the small square to its left. An
+# empty box (☐) is a hollow outline → white center → ~0.0 fill; a checked box (☑/☒)
+# has a mark crossing the center → ~0.20–0.26 fill. Measured across all three real
+# case files the separation is clean (checked ≥0.19, unchecked exactly 0.0), so a
+# 0.10 threshold is safe. The result is UNIONed with the text pass (see
+# scan_checklist): pixels recover dropped-glyph checkmarks; text covers the rare
+# label the image_to_data word-sequence match can't locate (a number/hyphen token
+# splitting the label). Neither pass can regress the other.
+_CHECKBOX_INK_THRESHOLD = 0.10
+
+
+def _locate_label_boxes(words, phrase):
+    """Find where a checklist label appears in an image_to_data word list.
+
+    `words` is a list of (text, left, top, width, height). Returns a list of
+    (left, top, width, height) tuples for the FIRST word of each occurrence of
+    `phrase`. Matching uses the label's alphabetic tokens (len ≥ 3, so connectors
+    like "of"/"or" and the "$50,000" in "Under $50,000 Asset Certification" drop
+    out) and must be CONTIGUOUS: between two label tokens only SHORT image words
+    (clean length < 3 -- an OCR'd number/symbol like "$50,000", or a dropped
+    connector like "or"/"of") may be skipped, never another full word. Allowing
+    arbitrary alphabetic filler was too loose and mis-matched a "Zero Income" label
+    onto "Asset Certification" in the opposite column.
+    """
+    toks = [t for t in re.sub(r'[^a-z ]', ' ', phrase.lower()).split() if len(t) >= 3]
+    if not toks:
+        return []
+    clean = [re.sub(r'[^a-z]', '', w[0].lower()) for w in words]
+    hits = []
+    for k in range(len(words)):
+        if not clean[k].startswith(toks[0]):
+            continue
+        kk = k
+        ok = True
+        for tk in toks[1:]:
+            found = False
+            while True:
+                kk += 1
+                if kk >= len(words):
+                    break
+                if len(clean[kk]) < 3:
+                    continue  # number/punctuation or dropped connector — skip, don't fail
+                found = clean[kk].startswith(tk[:4])
+                break         # first full word must match, else no match
+            if not found:
+                ok = False
+                break
+        if ok:
+            hits.append(words[k][1:])
+    return hits
+
+
+def _checkbox_center_ink(px, W, H, l, tp, h):
+    """Fraction of dark pixels in the CENTER of the checkbox left of a label word.
+
+    Scans the band just left of the label for the box, brackets its dark extent,
+    verifies the extent is roughly square (rejects stray text/margins), then returns
+    the dark-pixel fraction of the inner region (border margin excluded). Empty box
+    → ~0.0; checked box → ~0.2+. Returns 0.0 when no plausible box is found.
+    """
+    THR = 128
+    x1 = max(0, l - int(h * 3.0)); x2 = max(0, l - int(h * 0.6))
+    y1 = max(0, tp - int(h * 0.25)); y2 = min(H, tp + int(h * 1.15))
+    if x2 - x1 < 5 or y2 - y1 < 5:
+        return 0.0
+    # Columns that are substantially dark = the box's vertical strokes.
+    cols = [x for x in range(x1, x2)
+            if sum(1 for y in range(y1, y2) if px[x, y] < THR) >= 0.4 * (y2 - y1)]
+    if len(cols) >= 2:
+        bx1, bx2 = min(cols), max(cols)
+    else:
+        darkcols = [x for x in range(x1, x2)
+                    if any(px[x, y] < THR for y in range(y1, y2))]
+        if len(darkcols) < 3:
+            return 0.0
+        bx1, bx2 = min(darkcols), max(darkcols)
+    darkrows = [y for y in range(y1, y2)
+                if any(px[x, y] < THR for x in range(bx1, bx2 + 1))]
+    if len(darkrows) < 3:
+        return 0.0
+    by1, by2 = min(darkrows), max(darkrows)
+    # Reject anything that isn't roughly a checkbox-sized square (stray glyph/margin).
+    if (bx2 - bx1) < 0.4 * h or (bx2 - bx1) > 2.2 * h:
+        return 0.0
+    mx = int((bx2 - bx1) * 0.28); my = int((by2 - by1) * 0.28)
+    ix1, ix2, iy1, iy2 = bx1 + mx, bx2 - mx, by1 + my, by2 - my
+    if ix2 <= ix1 or iy2 <= iy1:
+        return 0.0
+    dark = sum(1 for x in range(ix1, ix2) for y in range(iy1, iy2) if px[x, y] < THR)
+    return dark / ((ix2 - ix1) * (iy2 - iy1))
+
+
+def detect_checklist_profile_pixels(img) -> dict:
+    """Pixel-based checkbox read of the located checklist page (income + conditions).
+
+    Complements the text pass (detect_checklist_profile); the caller unions the two.
+    Program designation (HTC/HOME/BOND) is left to the text pass — those boxes sit
+    AFTER the label, a different geometry, and the text pass already handles them.
+    Any failure returns an empty profile so this can never break the pipeline.
+    """
+    result = {'program': None, 'income': [], 'conditions': []}
+    try:
+        import pytesseract
+        gray = img.convert('L')
+        W, H = gray.size
+        px = gray.load()
+        data = pytesseract.image_to_data(gray, lang='eng',
+                                         output_type=pytesseract.Output.DICT)
+        words = [(data['text'][i].strip(), data['left'][i], data['top'][i],
+                  data['width'][i], data['height'][i])
+                 for i in range(len(data['text'])) if data['text'][i].strip()]
+        for value, group, keywords in CHECKLIST_ITEMS:
+            best = 0.0
+            for kw in keywords:
+                for (l, tp, w, h) in _locate_label_boxes(words, kw):
+                    ink = _checkbox_center_ink(px, W, H, l, tp, h)
+                    if ink > best:
+                        best = ink
+            if best >= _CHECKBOX_INK_THRESHOLD and value not in result[group]:
+                result[group].append(value)
+    except Exception as e:
+        logger.warning('pixel checkbox pass skipped: %s', e)
+    return result
 
 
 # ── Browser launcher ──────────────────────────────────────────────────────────
