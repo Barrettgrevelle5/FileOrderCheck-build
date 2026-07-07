@@ -40,7 +40,7 @@ def resource_path(*parts):
 # ── App version + update check (Tier 1: notify-only) ──────────────────────────
 # APP_VERSION is the single source of truth for "which build is this". Bump it on
 # every release and set the SAME value as "version" in the hosted manifest below.
-APP_VERSION = '2026.07.23'
+APP_VERSION = '2026.07.24'
 
 # URL of the hosted update manifest — a tiny JSON file you control. Leave EMPTY to
 # disable the update check entirely (it becomes a silent no-op). The manifest is
@@ -146,9 +146,24 @@ def check_update():
         return jsonify(result)   # feature not configured yet → silent no-op
     try:
         import urllib.request
+        # SSL trust: a frozen Windows PyInstaller build has no OS CA store to fall
+        # back on, so the default context raises CERTIFICATE_VERIFY_FAILED and the
+        # HTTPS fetch below silently fails (the whole update check appears dead on
+        # Windows while working on macOS). Build the context from certifi's bundled
+        # CA file when available; if certifi is missing (e.g. a dev box without it),
+        # ctx stays None and urlopen uses the platform default — unchanged macOS/dev
+        # behavior. certifi must be bundled in the .spec files for this to help the
+        # frozen build. (2026-07-07)
+        ctx = None
+        try:
+            import ssl
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ctx = None
         req = urllib.request.Request(
             UPDATE_MANIFEST_URL, headers={'User-Agent': 'FileOrderCheck'})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:
             manifest = json.loads(resp.read().decode('utf-8'))
         result['latest'] = manifest.get('version')
         result['downloadUrl'] = manifest.get('download_url')

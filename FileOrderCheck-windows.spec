@@ -93,7 +93,12 @@ datas = [
     (tessdata_dir, 'tessdata'),
 ]
 
-hiddenimports = ['app', 'flask', 'pytesseract', 'pdf2image', 'PIL', 'rapidfuzz']
+# certifi: bundles the CA cert file so the update check's HTTPS fetch can verify
+# raw.githubusercontent.com in the frozen Windows build — without it urlopen raises
+# CERTIFICATE_VERIFY_FAILED (no OS CA store) and the update banner never shows.
+# PyInstaller's certifi hook also ships cacert.pem so certifi.where() resolves at
+# runtime. See app.check_update. (2026-07-07)
+hiddenimports = ['app', 'flask', 'pytesseract', 'pdf2image', 'PIL', 'rapidfuzz', 'certifi']
 
 a = Analysis(
     ['launch.py'],
