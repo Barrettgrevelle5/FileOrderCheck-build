@@ -1633,8 +1633,13 @@ function walkQuestionnaire(qa) {
 
     // ── SECTION 3 — Student status (household-level, per the tree's "is ANY member a student?" form) ──
     { const v = ask('q3_1', boolQ('Student status','Is any household member a full-time student (now or 5+ months this year)?'));
-      if (yes(v)) { addF(v,'student_verif');
-        if (programs.has('HOME')) add('home_student');  // Q3.1a "is this HOME-funded?" carried from Q1.1 — not re-asked
+      if (yes(v)) {
+        // Student Verification is only required for an ADULT (18+) student, not a minor:
+        // an adult full-time student can receive student compensation/benefits that must
+        // be documented, whereas a minor student does not trigger it. (2026-07-07, Barrett.)
+        const adult = ask('q3_1a', boolQ('Student status','Is there a student who is 18+ (an adult)?'));
+        if (yes(adult)) addF(adult,'student_verif');
+        if (programs.has('HOME')) add('home_student');  // "is this HOME-funded?" carried from Q1.1 — not re-asked
         const fa = ask('q3_1b', boolQ('Student status','Does the student receive financial aid / scholarships / grants?'));
         if (yes(fa)) { addF(fa,'student_financial');
           const ex = ask('q3_1b_i', boolQ('Student status','Does the aid exceed tuition & required fees (the excess counts as income)?'));
@@ -1667,7 +1672,10 @@ function walkQuestionnaire(qa) {
         const w2 = ask('q4_2' + t, boolQ(who,'Is this member employed by an employer (W-2 wages)?'));
         if (yes(w2)) { addF(w2,'employment_verif');
           const sch = ask('q4_2a' + t, boolQ(who,'Is the employer a school / school district?'));        if (yes(sch)) addF(sch,'school_employee_q');
-          const tp  = ask('q4_2b' + t, boolQ(who,'Does this job include tips and/or commissions?'));      if (yes(tp))  addF(tp,'tips'); }
+          // Commissions dropped 2026-07-07 (Barrett's supervisor): commissions show up on
+          // paystubs and are already covered by employment_verif, so asking about them
+          // over-required the Tip Affidavit. Only tips trigger it.
+          const tp  = ask('q4_2b' + t, boolQ(who,'Does this job include tips?'));                          if (yes(tp))  addF(tp,'tips'); }
         const gig = ask('q4_3' + t, boolQ(who,'Does this member do gig / platform work (Uber, DoorDash, Instacart, etc.)?')); if (yes(gig)) addF(gig,'gig_income_verif');
         const se  = ask('q4_4' + t, boolQ(who,'Is this member self-employed / a business owner / 1099 contractor?'));        if (yes(se))  addF(se,'self_employ_affidavit','tax_return','profit_loss');
         // 4B — benefits / unearned income
