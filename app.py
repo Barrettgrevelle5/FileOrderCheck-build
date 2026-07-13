@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
+import base64
+import binascii
 import json
 import os
 import sys
@@ -40,7 +42,7 @@ def resource_path(*parts):
 # ── App version + update check (Tier 1: notify-only) ──────────────────────────
 # APP_VERSION is the single source of truth for "which build is this". Bump it on
 # every release and set the SAME value as "version" in the hosted manifest below.
-APP_VERSION = '2026.07.26'
+APP_VERSION = '2026.07.30'
 
 # URL of the hosted update manifest — a tiny JSON file you control. Leave EMPTY to
 # disable the update check entirely (it becomes a silent no-op). The manifest is
@@ -227,10 +229,21 @@ def scan_checklist():
         # over-threshold asset boxes, and the pixel pass reads both correctly; nulling
         # them would resurface the very false "checkbox unchecked" advisory this fixes.
         ppix = detect_checklist_profile_pixels(imgs_250[0])
+        # UNION the two text passes with the pixel-CHECKED items, then apply the pixel
+        # confident-EMPTY veto: an item whose every checkbox the pixel pass located and
+        # measured empty is dropped even if a text pass read it checked. This kills the
+        # text-pass false positives where an empty box outline OCRs as a checkmark
+        # artifact ('[]', '(1', a stray digit) — the box the pixel pass actually saw is
+        # empty. The veto never fires against a pixel-CHECKED item (mutually exclusive by
+        # construction) nor against an item with an unlocatable box (UNKNOWN, not EMPTY).
+        empty_income = set(ppix['empty']['income'])
+        empty_conditions = set(ppix['empty']['conditions'])
         profile = {
             'program':    p200['program'] or p250['program'],
-            'income':     list(dict.fromkeys(p200['income'] + p250['income'] + ppix['income'])),
-            'conditions': list(dict.fromkeys(p200['conditions'] + p250['conditions'] + ppix['conditions'])),
+            'income':     [v for v in dict.fromkeys(p200['income'] + p250['income'] + ppix['income'])
+                           if v not in empty_income],
+            'conditions': [v for v in dict.fromkeys(p200['conditions'] + p250['conditions'] + ppix['conditions'])
+                           if v not in empty_conditions],
         }
         return jsonify({
             'profile': profile,
@@ -346,24 +359,49 @@ def ocr():
 
 @app.route('/api/analyze-bank', methods=['POST'])
 def analyze_bank():
+    # PII / DATA-FLOW NOTE (2026-07-10 geometric rebuild): this route now receives the
+    # full applicant PDF as base64 (data['pdf']) and RE-OCRs the selected pages with
+    # image_to_data — so raw applicant PDF bytes now flow to this endpoint, not just OCR
+    # text. Same local-only PII posture as the rest of the app; never expose to a network.
+    # data['pages'] now supplies only the selected page INDICES; the parser no longer
+    # consumes its OCR text (geometry re-OCRs the pages from the PDF bytes instead).
     data = request.get_json(force=True, silent=True)
     if not data or 'pages' not in data:
         return jsonify({'error': 'Missing pages'}), 400
 
-    seen_keys = set()
-    all_transactions = []
+    # Geometric parse: a second image_to_data OCR pass on the selected pages rebuilds
+    # rows the shared PSM-3 text linearizes away (see _extract_bank_rows). It NEEDS the
+    # page images, so the client sends the PDF (base64) alongside the page list.
+    pdf_b64 = data.get('pdf')
+    indices = [p.get('index') for p in data['pages']]
 
-    for page in data['pages']:
-        text = page.get('text', '')
-        page_idx = page.get('index', 0)
-        for tx in _parse_bank_transactions(text, page_idx):
-            # Deduplicate within a page only — different pages = different payroll deposits.
-            key = (tx['type'], tx['description'][:60], tx.get('date'), tx.get('page'))
-            if key not in seen_keys:
-                seen_keys.add(key)
-                all_transactions.append(tx)
+    # There is NO text-only fallback: without the PDF bytes there is nothing to OCR
+    # geometrically. Returning an empty result for a missing/blank 'pdf' would silently
+    # turn an upload/integration failure into "no income detected" — unacceptable in a
+    # compliance workflow — so a missing, null, blank, or non-string 'pdf' is a 400.
+    if not isinstance(pdf_b64, str) or not pdf_b64.strip():
+        return jsonify({'error': 'A base64-encoded PDF is required for bank analysis'}), 400
 
-    return jsonify({'transactions': all_transactions})
+    # Narrow catch #1: base64 decoding only. base64.b64decode raises binascii.Error on a
+    # non-base64 payload; that (and an empty decode) is client input, so → 400.
+    try:
+        pdf_bytes = base64.b64decode(pdf_b64.strip(), validate=True)
+    except (binascii.Error, ValueError):
+        return jsonify({'error': 'The supplied PDF is not valid base64'}), 400
+    if not pdf_bytes:
+        return jsonify({'error': 'The supplied PDF is empty'}), 400
+
+    # Narrow catch #2: PDF rasterization only. _ocr_bank_pages_tsv raises BankPdfError
+    # solely when the decoded bytes are not a renderable PDF (the recognized client-input
+    # failure). Any OTHER exception from OCR, geometric extraction, or transaction parsing
+    # is NOT caught here and surfaces as a normal 500 — a real defect must never be
+    # disguised as "invalid PDF". No traceback, path, base64, or applicant data is echoed.
+    try:
+        pages_words = _ocr_bank_pages_tsv(pdf_bytes, indices)
+    except BankPdfError:
+        logger.warning("analyze-bank: supplied bytes are not a renderable PDF")
+        return jsonify({'error': 'Could not read the supplied PDF for bank analysis'}), 400
+    return jsonify({'transactions': _parse_bank_transactions(pages_words)})
 
 
 def _classify_tx_type(desc):
@@ -379,175 +417,345 @@ def _classify_tx_type(desc):
     return 'deposit'
 
 
-def _strip_zelle_ref(desc):
-    """Remove trailing Zelle reference codes (12+ char alphanumeric tokens) from description."""
-    return re.sub(r'\s+[A-Za-z0-9]{12,}\s*$', '', desc).strip()
+# ── Geometric bank-statement parser ───────────────────────────────────────────
+# WHY GEOMETRY. The shared /api/ocr PSM-3 pass linearizes a multi-column statement
+# COLUMN-FIRST: on UFCU's form it emits every date, then every description, then every
+# amount, then every balance — so no text line is ever a "row", the register parses to
+# zero transactions, and the old balance-delta spine drifted (stale anchors, phantom
+# credits). For the BANK PATH ONLY we take a second OCR pass with image_to_data (word
+# boxes) on the selected pages and rebuild rows by geometry: group words by shared
+# y-coordinate, then assign each numeric token to a money column by x-position anchored
+# to the page's own column-header words. Because geometry — not text order — isolates
+# the AMOUNT column, the printed amount is clean and is the PRIMARY signal; the balance
+# column (which carries OCR spikes like 4,404.09 between two ~1,400 rows) is only a
+# cross-check and a fallback when the printed token is corrupt. Nothing here touches the
+# global PSM-3 text every other consumer reads.
+
+_BANK_MONEY_RE = re.compile(r'^[-~+]?\$?\d[\d,]*\.\d{2}[.,]?$')   # -8.68 / 1,730.48 / ~41.99
+_BANK_DATE_RE = re.compile(r'^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$')
+_BANK_SEED_RE = re.compile(r'\b(?:starting|beginning)\b', re.IGNORECASE)
+_BANK_OUT_RE = re.compile(r'\bwithdrawal\b|\bdebit\b|withdrawal by check', re.IGNORECASE)
+_BANK_IN_RE = re.compile(r'\bdeposit\b|\bcredit\b', re.IGNORECASE)
+_BANK_HDR_KEYS = ('withdrawals', 'deposits', 'balance', 'amount', 'description', 'date', 'type')
+_BANK_YBAND = 14           # px tolerance for grouping words into one row at 200 DPI
+_BANK_SPIKE_MIN = 400.0    # a balance that jumps this far from the anchor and reverts is untrusted
+# Printed-vs-balance amount ratio at/above which the printed token is treated as grossly
+# wrong (a leading-digit-class OCR blunder, e.g. '4,202.85' for ~1,202.85). NOT an
+# "order of magnitude" (10x) — a ~3x gross disagreement. Only then, and only when the
+# balance delta is trusted, is the printed amount overridden by the balance amount.
+_BANK_AMOUNT_RATIO_OUTLIER = 3
+# Continuation-fold bounds (px at 200 DPI). A real continuation band (a payee tail, a
+# CO:/TYPE: line) sits within ~one row height BELOW its transaction; statement footers and
+# the full-page legal disclosure that can follow are separated by a larger gap or a page
+# break. Fold only within the SAME page, only across a small vertical gap, and only until a
+# generous length cap — so disclosure prose can never be absorbed into a transaction as a
+# giant phantom (UFCU p40's back-of-statement legal text used to fold into the p40 Ending
+# Balance row → a 4,300-char phantom 'in'). The length cap is a conservative final guard,
+# not the primary rule (same-page + gap + page-break are the structural ones).
+_BANK_FOLD_MAX_GAP = 45
+_BANK_FOLD_MAX_LEN = 500
+# Row TYPE keywords used to admit a date-less-but-otherwise-structured transaction (below).
+_BANK_TYPE_RE = re.compile(r'\bwithdrawal\b|\bdeposit\b|\bdebit\b|\bcredit\b|\bpos\b|\bach\b'
+                           r'|point of sale|faster payments', re.IGNORECASE)
 
 
-def _normalize_amount(s):
-    """Normalize OCR sign artifacts: ~12.00 → -12.00, "12.00 → -12.00."""
-    if s and s[0] in ('~', '“', '”', '"'):
-        return '-' + s[1:]
-    return s
+def _bank_norm(t):
+    return t.lower().strip('.:,')
 
 
-def _parse_bank_transactions(page_text, page_index=0):
-    """Extract income-related transactions from one bank statement OCR page.
+def _bank_cx(w):
+    """Horizontal center of a word box."""
+    return w['left'] + w['width'] / 2.0
 
-    Strategy 1 — full structured line (pages where each tx is one line):
-        MM/DD [MM/DD] TYPE DESCRIPTION AMOUNT [BALANCE]
-        Handles both Deposit and Withdrawal Faster Payments; looks ahead for ZEL* payee.
-    Strategy 2 — ACH payroll block (fragmented multi-column pages):
-        Finds TYPE: PAYROLL keyword; pulls amount from the AMOUNT column block.
-    Strategy 3 — P2P keyword lines (ZEL*, VENMO, etc.):
-        Falls back to backward-scan for amount when on structured pages.
-    """
-    transactions = []
-    lines = [l.strip() for l in page_text.split('\n') if l.strip()]
 
-    # ── AMOUNT block (fragmented pages) ───────────────────────────────────────
-    # Handles "AMOUNT\n...BALANCE\n" (page 36) and "AMOUNT BALANCE\n..." (page 37+).
-    _amount_block = None
-    _ab = re.search(r'\bAMOUNT(?:\s+BALANCE)?\b\s*\n(.*?)$', page_text, re.DOTALL | re.IGNORECASE)
-    if _ab:
-        _amount_block = _ab.group(1)
-
-    def _first_large_credit(min_val=300):
-        """First unsigned-positive amount ≥ min_val in the AMOUNT block = payroll credit."""
-        if not _amount_block:
-            return None
-        for aline in _amount_block.split('\n'):
-            aline = aline.strip()
-            if not aline or aline[0] in ('-', '~', '“', '”', '"'):
-                continue
-            am = re.match(r'^\+?(\d{1,3}(?:,\d{3})*\.\d{2})$', aline)
-            if am:
-                val = float(am.group(1).replace(',', ''))
-                if val >= min_val:
-                    return f'+${am.group(1)}'
+def _bank_num(tok):
+    """Signed float of a clean 2-decimal money token, or None when it is OCR-corrupt
+    ('my', '300 eb', '-220.0' one-decimal, '~41,99' comma-decimal, trailing junk)."""
+    if tok is None:
         return None
+    t = tok.strip().rstrip('.,').lstrip('~').replace('$', '')
+    neg = t.startswith('-')
+    t = t.lstrip('+-').replace(',', '')
+    if not re.fullmatch(r'\d+\.\d{2}', t):
+        return None
+    v = float(t)
+    return -v if neg else v
 
-    # ── Strategy 1: full structured line ──────────────────────────────────────
-    structured_re = re.compile(
-        r'^(\d{1,2}/\d{2})'
-        r'(?:\s+\d{1,2}/\d{2})?'
-        r'\s+(Withdrawal|Deposit|Credit)'
-        r'\s+(.+?)'
-        r'\s+([+\-~""“”]?\$?\d{1,3}(?:,\d{3})*\.\d{2})'
-        r'(?:\s+\d{1,3}(?:,\d{3})*\.\d{2})?$',
-        re.IGNORECASE,
-    )
-    zel_absorbed = set()  # lines[] indices whose ZEL* was merged into a Strategy 1 hit
 
-    for i, line in enumerate(lines):
-        m = structured_re.match(line)
-        if not m:
-            continue
-        date, tx_type, desc, amount = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
-        is_deposit = tx_type.lower() in ('deposit', 'credit')
-        is_faster = bool(re.search(r'faster\s*payments?', desc, re.IGNORECASE))
-        is_payroll_ach = is_deposit and bool(re.search(r'\bach\b', desc, re.IGNORECASE))
+def _bank_label_direction(desc):
+    """Direction from the statement's own row TYPE words ('Withdrawal'/'Deposit'), the
+    most reliable signal on a single-amount-column form where the balance can spike."""
+    if _BANK_OUT_RE.search(desc):
+        return 'out'
+    if _BANK_IN_RE.search(desc):
+        return 'in'
+    return None
 
-        # Surface deposits and Faster Payments transfers (withdrawal or deposit)
-        if not is_deposit and not is_faster:
-            continue
 
-        # Look ahead for ZEL* continuation line (Faster Payments → Zelle pattern)
-        zelle_payee = None
-        if is_faster and i + 1 < len(lines):
-            next_line = lines[i + 1]
-            if re.match(r'^zel[*\s]', next_line, re.IGNORECASE):
-                zelle_payee = _strip_zelle_ref(next_line)
-                zel_absorbed.add(i + 1)
-
-        # Look ahead for TYPE: PAYROLL on ACH deposit lines
-        if is_payroll_ach:
-            for k in range(i + 1, min(i + 5, len(lines))):
-                if re.search(r'\btype\s*:\s*payroll\b', lines[k], re.IGNORECASE):
-                    employer = re.sub(r'(?i)^ach\s+', '', desc).strip()
-                    desc = f'PAYROLL — {employer}'
-                    break
-
-        final_desc = zelle_payee if zelle_payee else desc
-        transactions.append({
-            'date': date,
-            'description': final_desc,
-            'amount': _normalize_amount(amount),
-            'type': _classify_tx_type(final_desc),
-            'page': page_index + 1,
-            'direction': 'in' if is_deposit else 'out',
-        })
-
-    # ── Strategy 2: ACH payroll block (fragmented pages) ──────────────────────
-    payroll_credit = _first_large_credit(min_val=300)
-
-    for i, line in enumerate(lines):
-        if not re.search(r'\btype\s*:\s*payroll\b', line, re.IGNORECASE):
-            continue
-        employer_line = lines[i - 1] if i > 0 else ''
-        # Handle both "ACH EMPLOYER" and "MM/DD MM/DD Deposit ACH EMPLOYER" formats
-        ach_m = re.search(r'\bACH\s+(.+?)(?:\s+TYPE:|\s*$)', employer_line, re.IGNORECASE)
-        if ach_m:
-            employer = ach_m.group(1).strip()
+def _bank_bands(words):
+    """Group image_to_data words into rows by shared y-coordinate (a statement row)."""
+    ordered = sorted(words, key=lambda w: (w['top'], w['left']))
+    bands, cur, cy = [], [], None
+    for w in ordered:
+        if cy is None or abs(w['top'] - cy) <= _BANK_YBAND:
+            cur.append(w)
+            cy = w['top'] if cy is None else cy
         else:
-            employer = re.sub(r'(?i)^ach\s+', '', employer_line).strip()
-        if not employer or len(employer) <= 2:
+            bands.append(cur)
+            cur, cy = [w], w['top']
+    if cur:
+        bands.append(cur)
+    return bands
+
+
+def _bank_header_anchors(page_bands):
+    """x-center of each column header on this page, from the band that holds 'balance'
+    plus a money column. Rejects a summary line (e.g. 'N Withdrawals = … Deposits =')
+    by requiring balance to be the RIGHTMOST header and a money column to its left."""
+    for band in page_bands:
+        keys = {_bank_norm(w['text']) for w in band}
+        if 'balance' not in keys or not ({'deposits', 'amount'} & keys):
             continue
-        # Skip if Strategy 1 already captured a payroll (date is set on structured pages)
-        if any(t['type'] == 'payroll' and t.get('date') for t in transactions):
+        cols = {}
+        for w in band:
+            k = _bank_norm(w['text'])
+            if k in _BANK_HDR_KEYS and k not in cols:
+                cols[k] = _bank_cx(w)
+        money = [cols[k] for k in ('withdrawals', 'deposits', 'amount') if k in cols]
+        if money and cols['balance'] >= max(money) and cols.get('description', 0) < cols['balance']:
+            return cols
+    return None
+
+
+def _extract_bank_rows(pages_words):
+    """Geometry pass: turn per-page image_to_data word boxes into structured rows.
+
+    `pages_words` is [{'index': <0-based PDF page>, 'words': [{text,left,top,width,
+    height}, …]}, …] — exactly what the test fixtures store, so the tests are hermetic
+    (no live OCR). Column anchors are found per page and INHERITED across continuation
+    pages that repeat no header. Each row: {page, date, description, amount_raw,
+    amount_col, printed, balance, is_tx, is_seed}. Continuation bands (a ZEL* payee, a
+    CO:/TYPE: line, an address tail) carry no date/balance and fold into the row above.
+    """
+    anchors = None
+    raw = []
+    for page in pages_words:
+        idx = page.get('index', 0)
+        page_bands = _bank_bands(page.get('words', []))
+        found = _bank_header_anchors(page_bands)
+        if found:
+            anchors = found
+        if not anchors:
             continue
-        transactions.append({
-            'date': None,
-            'description': f'PAYROLL — {employer}',
-            'amount': payroll_credit,
-            'type': 'payroll',
-            'page': page_index + 1,
-            'direction': 'in',
+        bal_x = anchors['balance']
+        money_x = [anchors[k] for k in ('withdrawals', 'deposits', 'amount') if k in anchors]
+        desc_x = anchors.get('description', 0)
+        # Split point between the money column(s) and the balance column.
+        amt_bal_bound = (max(money_x) + bal_x) / 2.0 if money_x else bal_x - 100
+
+        for band in page_bands:
+            toks = sorted(band, key=lambda w: w['left'])
+            if toks and all(_bank_norm(w['text']) in _BANK_HDR_KEYS for w in toks):
+                continue                                    # the column-header band itself
+            dates = [w for w in toks if _BANK_DATE_RE.fullmatch(w['text'].strip('.'))]
+            nums = [w for w in toks if _BANK_MONEY_RE.fullmatch(w['text'])]
+            date = dates[0]['text'] if dates else None
+
+            bal = amt = amt_col = None
+            bal_cands = [w for w in nums if _bank_cx(w) >= amt_bal_bound]
+            if bal_cands:
+                bal = max(bal_cands, key=_bank_cx)          # rightmost number = balance
+            amt_cands = [w for w in nums
+                         if w is not bal and _bank_cx(w) < amt_bal_bound and _bank_cx(w) > desc_x - 60]
+            if amt_cands:
+                amt = max(amt_cands, key=_bank_cx)          # number in the money column
+            if amt is not None and money_x:
+                if 'withdrawals' in anchors and 'deposits' in anchors:
+                    amt_col = ('deposits'
+                               if abs(_bank_cx(amt) - anchors['deposits']) < abs(_bank_cx(amt) - anchors['withdrawals'])
+                               else 'withdrawals')
+                else:
+                    amt_col = 'amount'
+            desc = ' '.join(w['text'] for w in toks
+                            if w not in dates and w is not bal and w is not amt
+                            and _bank_norm(w['text']) not in _BANK_HDR_KEYS).strip()
+
+            # A row is a transaction when it carries a balance AND either a date OR — when
+            # OCR dropped/garbled the date — a printed amount in the money column plus a
+            # transaction TYPE word. The second arm recovers a real row that would otherwise
+            # be mistaken for continuation prose and folded away (UFCU p38's $40 Faster
+            # Payments DEPOSIT: amount 40.00 + balance 816.96 but its date OCR'd to garbage;
+            # losing it also corrupted the next row's balance delta). Summary/total lines are
+            # excluded here because their totals do not sit in the balance column (bal=None).
+            has_type = bool(_BANK_TYPE_RE.search(desc))
+            is_tx = bal is not None and (date is not None or (amt is not None and has_type))
+            raw.append({
+                'page': idx, 'top': min(w['top'] for w in band), 'date': date,
+                'description': desc,
+                'amount_raw': amt['text'] if amt else None, 'amount_col': amt_col,
+                'printed': _bank_num(amt['text']) if amt else None,
+                'balance': _bank_num(bal['text']) if bal else None,
+                'is_tx': is_tx,
+                'is_seed': bool(bal is not None and _BANK_SEED_RE.search(desc)),
+            })
+
+    # Fold continuation bands into the previous transaction's description — but only within
+    # the SAME page, only across a small vertical gap from the last folded line, and only up
+    # to a length cap (see _BANK_FOLD_* above). This stops a page break or a large gap into
+    # footer/legal prose from being absorbed as a giant phantom transaction.
+    folded = []
+    for r in raw:
+        if r['is_tx'] or r['is_seed']:
+            r['_lasttop'] = r['top']
+            folded.append(r)
+        elif (folded and r['description']
+              and folded[-1]['page'] == r['page']
+              and r['top'] - folded[-1]['_lasttop'] <= _BANK_FOLD_MAX_GAP
+              and len(folded[-1]['description']) < _BANK_FOLD_MAX_LEN):
+            folded[-1]['description'] = (folded[-1]['description'] + ' ' + r['description']).strip()
+            folded[-1]['_lasttop'] = r['top']
+    for r in folded:
+        r.pop('_lasttop', None)
+        r.pop('top', None)
+    return folded
+
+
+def _parse_bank_rows(pages_words):
+    """Classify each structured row's direction and amount by EVIDENCE (not bank name).
+
+    DIRECTION, most reliable first: the money COLUMN a two-column form put the amount in
+    (TDECU withdrawals/deposits) → the statement's explicit Withdrawal/Deposit row LABEL
+    (UFCU) → balance movement → printed sign.
+
+    AMOUNT: the printed amount is PRIMARY (geometry isolated its column cleanly); the
+    balance delta is a cross-check, and the fallback only when the printed token is
+    OCR-corrupt. A balance that spikes far from the anchor and reverts on the next row is
+    untrusted: it is neither used for the delta nor carried forward as the anchor. Across
+    a gap in the selected pages (e.g. a case file's pages 34→36, page 35 filtered out) the chain is
+    broken — the anchor resets so no phantom cross-gap delta is emitted.
+    """
+    rows = _extract_bank_rows(pages_words)
+    out = []
+    anchor = None
+    prev_page = None
+    for i, r in enumerate(rows):
+        if r['is_seed']:
+            anchor = r['balance']
+            prev_page = r['page']
+            continue
+        if not r['is_tx']:
+            continue
+
+        bal = r['balance']
+        if prev_page is not None and r['page'] - prev_page > 1:
+            anchor = None                                   # page gap → break the chain
+
+        spike = False
+        if anchor is not None and bal is not None:
+            nxt = next((rows[j]['balance'] for j in range(i + 1, len(rows)) if rows[j]['is_tx']), None)
+            if abs(bal - anchor) > _BANK_SPIKE_MIN and nxt is not None and abs(nxt - anchor) < abs(bal - anchor) / 2:
+                spike = True
+
+        col_dir = ('out' if r['amount_col'] == 'withdrawals'
+                   else 'in' if r['amount_col'] == 'deposits' else None)
+        label = _bank_label_direction(r['description'])
+        printed = r['printed']
+        delta = round(bal - anchor, 2) if (anchor is not None and bal is not None and not spike) else None
+
+        direction = (col_dir or label
+                     or (None if delta is None else ('in' if delta > 0 else 'out'))
+                     or (None if printed is None else ('in' if printed > 0 else 'out')))
+
+        # amount_alt carries the OTHER candidate whenever printed and a trusted balance
+        # delta disagree, so the UI can show both and never present one as unquestioned.
+        amount_alt = None
+        if printed is not None:
+            amount = abs(printed)
+            flag = None
+            if delta is not None and abs(abs(printed) - abs(delta)) >= 0.01:
+                # Printed and a TRUSTED balance delta disagree. `delta` is non-None only
+                # when the chain is consistent here (anchor trusted, this balance not a
+                # spike, not across a page gap / register boundary), so the delta is
+                # reliable. Guarded reconciliation: when the printed amount GROSSLY
+                # disagrees with that delta — a ratio at/above _BANK_AMOUNT_RATIO_OUTLIER
+                # (~3x, a leading-digit-class miss like UFCU p39 payroll '4,202.85' OCR'd
+                # for ~1,202.85) — the printed token is almost certainly an OCR blunder, so
+                # correct to the balance amount, but never silently. Smaller disagreements
+                # stay printed-primary (printed is usually the clean column) BUT surface both
+                # candidates: e.g. UFCU p37's $50 zelle DEPOSIT OCR's as '50.06' (conf 76 —
+                # confidently wrong) while the balance moves exactly 50.00. The 'manual' floor
+                # still wins wherever delta is None.
+                hi, lo = max(abs(printed), abs(delta)), min(abs(printed), abs(delta))
+                if lo > 0 and hi / lo >= _BANK_AMOUNT_RATIO_OUTLIER:
+                    amount = abs(delta)
+                    amount_alt = abs(printed)               # the suspect printed token
+                    flag = 'verify: amount corrected from balance, printed OCR suspect'
+                else:
+                    amount_alt = abs(delta)                 # the balance-movement candidate
+                    flag = 'verify: balance delta disagrees'
+        elif delta is not None:
+            amount = abs(delta)
+            flag = 'verify: amount recovered from balance'
+        else:
+            amount = None
+            flag = 'manual: unreadable'
+
+        if not spike and bal is not None:
+            anchor = bal                                    # advance only to a trusted balance
+        prev_page = r['page']
+
+        # page: 0-based OCR/PDF index (internal — arrays, rasterization, navigation).
+        # page_number: 1-based, for human display ONLY. Emit both; the UI must show
+        # page_number and never render the raw 0-based index.
+        out.append({
+            'date': r['date'], 'description': r['description'],
+            'type': _classify_tx_type(r['description']),
+            'page': r['page'], 'page_index': r['page'], 'page_number': r['page'] + 1,
+            'balance': bal, 'amount': amount, 'amount_alt': amount_alt,
+            'direction': direction, 'flag': flag,
         })
+    return out
 
-    # ── Strategy 3: P2P keyword lines (ZEL*, VENMO, CASH APP, etc.) ──────────
-    p2p_re = re.compile(
-        r'^(ZEL\*\s*\S+(?:\s+\S+)?'
-        r'|VENMO\b[^\n]*'
-        r'|CASH\s*APP\b[^\n]*'
-        r'|CASHAPP\b[^\n]*'
-        r'|PAYPAL\b[^\n]*)',
-        re.IGNORECASE,
-    )
-    for i, line in enumerate(lines):
-        if i in zel_absorbed:
+
+def _parse_bank_transactions(pages_words):
+    """Income view: only inflows (direction == 'in') across the selected pages."""
+    return [r for r in _parse_bank_rows(pages_words) if r.get('direction') == 'in']
+
+
+class BankPdfError(ValueError):
+    """The bank 'pdf' payload decoded, but is not a renderable PDF. Raised ONLY for that
+    recognized client-input failure so the route can map it to a controlled 400; every
+    other failure (poppler missing, tesseract error, a parser bug) propagates normally."""
+
+
+def _ocr_bank_pages_tsv(pdf_bytes, indices):
+    """LIVE second OCR pass for the bank path: image_to_data (word boxes) on just the
+    selected statement pages, at the same 200 DPI as /api/ocr. Returns the structured
+    input _extract_bank_rows expects. Not unit-tested (needs the page image); the tests
+    fixture this pass's output. Isolated to the bank path — the global PSM-3 text pass
+    is untouched, so every other consumer keeps reading identical text."""
+    from pdf2image import convert_from_bytes
+    from pdf2image.exceptions import PDFPageCountError, PDFSyntaxError
+    import pytesseract
+    pages_words = []
+    for idx in indices:
+        if idx is None:
             continue
-        m = p2p_re.match(line)
-        if not m:
+        try:
+            imgs = convert_from_bytes(pdf_bytes, dpi=200, first_page=idx + 1, last_page=idx + 1)
+        except (PDFPageCountError, PDFSyntaxError) as e:
+            # Recognized "not a renderable PDF" — surface as the one client-input error the
+            # route converts to 400. Poppler-not-installed and any other fault are distinct
+            # exception types, so they are NOT swallowed here.
+            raise BankPdfError(str(e)) from e
+        if not imgs:
             continue
-        desc = _strip_zelle_ref(m.group(1).strip())
-        if len(desc.split()) > 7:
-            continue
-
-        # On structured pages the ZEL* line follows a "Faster Payments MM/DD AMOUNT" line —
-        # scan backward to pick up that date and amount.
-        amount = None
-        date = None
-        for j in range(i - 1, max(i - 4, -1), -1):
-            prev = lines[j]
-            if re.search(r'faster\s*payments?', prev, re.IGNORECASE):
-                am = re.search(r'([+\-~""""]?\$?\d{1,3}(?:,\d{3})*\.\d{2})', prev)
-                if am:
-                    amount = _normalize_amount(am.group(1))
-                dm = re.match(r'^(\d{1,2}/\d{2})', prev)
-                if dm:
-                    date = dm.group(1)
-                break
-
-        transactions.append({
-            'date': date,
-            'description': desc,
-            'amount': amount,
-            'type': 'p2p',
-            'page': page_index + 1,
-        })
-
-    return transactions
+        d = pytesseract.image_to_data(imgs[0], lang='eng', output_type=pytesseract.Output.DICT)
+        words = [{'text': d['text'][i], 'left': d['left'][i], 'top': d['top'][i],
+                  'width': d['width'][i], 'height': d['height'][i]}
+                 for i in range(len(d['text'])) if d['text'][i].strip()]
+        pages_words.append({'index': idx, 'words': words})
+    return pages_words
 
 
 # ── Checklist page locator ────────────────────────────────────────────────────
@@ -866,6 +1074,25 @@ def _is_checked(text: str, keywords: list) -> bool:
 
         last = line_prefix[-1]
 
+        # A checkbox that OCRs as a bracket PAIR must be judged by its INTERIOR, not by
+        # the closing bracket. An EMPTY box outline reads as edges only — '[]', '[_]',
+        # '[-]', '(_]' (the interior is nothing / an underscore / a hyphen / the box's
+        # bottom stroke) — while a CHECKED box carries the checkmark glyph inside:
+        # '[Y]', '[vy]', '[¥]'. The old rule looked only at the trailing ']' and so read
+        # EVERY bracketed box as checked, turning empty boxes into false positives
+        # (one case file: 11 empty boxes flagged; Rental Payment Worksheet on multiple files).
+        # Close-bracket set is ']}' only — deliberately NOT ')', because parenthetical
+        # form text like '(if applicable)' legitimately ends in ')' with text inside and
+        # would otherwise read as a checkmark. A trailing bracket with no matching open
+        # bracket falls through to the legacy single-char rules below (unchanged).
+        if last in ']}':
+            op = max(line_prefix.rfind(c) for c in '[({')
+            if op >= 0:
+                interior = line_prefix[op + 1:len(line_prefix) - 1]
+                if re.sub(r'[\s_\-|.=]', '', interior) == '':
+                    continue      # empty box outline → UNCHECKED
+                return True        # a mark sits inside the box → CHECKED
+
         # A prefix that is *exactly* a lone '1' is the OCR of an empty box's vertical
         # edge (☐) — or a stray list-item number — NOT a checked-box fill. This must
         # be tested on the WHOLE prefix, not `last`, so it does not catch a multi-char
@@ -961,19 +1188,24 @@ def _locate_label_boxes(words, phrase):
     return hits
 
 
-def _checkbox_center_ink(px, W, H, l, tp, h):
-    """Fraction of dark pixels in the CENTER of the checkbox left of a label word.
+def _checkbox_box_ink(px, W, H, l, tp, h):
+    """Locate the checkbox left of a label word and measure its center ink.
 
-    Scans the band just left of the label for the box, brackets its dark extent,
-    verifies the extent is roughly square (rejects stray text/margins), then returns
-    the dark-pixel fraction of the inner region (border margin excluded). Empty box
-    → ~0.0; checked box → ~0.2+. Returns 0.0 when no plausible box is found.
+    Returns (located, ink):
+      - located: True iff a checkbox-sized SQUARE was bracketed in the band left of the
+        label (passes the dark-strokes + squareness gate). This is what lets the caller
+        tell a box that is MEASURED empty (located=True, ink~0.0) apart from a box that
+        could not be found at all (located=False) — the two used to be indistinguishable
+        because both returned 0.0, and the difference is what makes a pixel-empty→veto
+        of the text pass safe (only veto when we actually saw an empty box).
+      - ink: dark-pixel fraction of the box's inner region (border margin excluded).
+        Empty box → ~0.0; checked box → ~0.2+. 0.0 when not located.
     """
     THR = 128
     x1 = max(0, l - int(h * 3.0)); x2 = max(0, l - int(h * 0.6))
     y1 = max(0, tp - int(h * 0.25)); y2 = min(H, tp + int(h * 1.15))
     if x2 - x1 < 5 or y2 - y1 < 5:
-        return 0.0
+        return (False, 0.0)
     # Columns that are substantially dark = the box's vertical strokes.
     cols = [x for x in range(x1, x2)
             if sum(1 for y in range(y1, y2) if px[x, y] < THR) >= 0.4 * (y2 - y1)]
@@ -983,33 +1215,60 @@ def _checkbox_center_ink(px, W, H, l, tp, h):
         darkcols = [x for x in range(x1, x2)
                     if any(px[x, y] < THR for y in range(y1, y2))]
         if len(darkcols) < 3:
-            return 0.0
+            return (False, 0.0)
         bx1, bx2 = min(darkcols), max(darkcols)
     darkrows = [y for y in range(y1, y2)
                 if any(px[x, y] < THR for x in range(bx1, bx2 + 1))]
     if len(darkrows) < 3:
-        return 0.0
+        return (False, 0.0)
     by1, by2 = min(darkrows), max(darkrows)
     # Reject anything that isn't roughly a checkbox-sized square (stray glyph/margin).
     if (bx2 - bx1) < 0.4 * h or (bx2 - bx1) > 2.2 * h:
-        return 0.0
+        return (False, 0.0)
     mx = int((bx2 - bx1) * 0.28); my = int((by2 - by1) * 0.28)
     ix1, ix2, iy1, iy2 = bx1 + mx, bx2 - mx, by1 + my, by2 - my
     if ix2 <= ix1 or iy2 <= iy1:
-        return 0.0
+        return (False, 0.0)
     dark = sum(1 for x in range(ix1, ix2) for y in range(iy1, iy2) if px[x, y] < THR)
-    return dark / ((ix2 - ix1) * (iy2 - iy1))
+    return (True, dark / ((ix2 - ix1) * (iy2 - iy1)))
+
+
+def _checkbox_center_ink(px, W, H, l, tp, h):
+    """Center ink fraction of the checkbox left of a label word (0.0 if none found).
+
+    Thin wrapper over _checkbox_box_ink for callers that only need the ink value.
+    """
+    return _checkbox_box_ink(px, W, H, l, tp, h)[1]
 
 
 def detect_checklist_profile_pixels(img) -> dict:
     """Pixel-based checkbox read of the located checklist page (income + conditions).
 
-    Complements the text pass (detect_checklist_profile); the caller unions the two.
-    Program designation (HTC/HOME/BOND) is left to the text pass — those boxes sit
-    AFTER the label, a different geometry, and the text pass already handles them.
-    Any failure returns an empty profile so this can never break the pipeline.
+    Complements the text pass (detect_checklist_profile); the caller unions the two and
+    then applies the confident-empty VETO below.
+
+    For each item this computes a tri-state from the actual box pixels:
+      - CHECKED  → some located box's center ink ≥ threshold. Added to income/conditions
+                   (recovers checkmarks whose glyph Tesseract dropped, e.g. the asset
+                   boxes and Special Needs).
+      - EMPTY    → EVERY keyword-label's box was located AND none is checked. Added to
+                   result['empty'][group]. The caller removes these from the union, which
+                   VETOES a text-pass false positive where an empty box outline OCRs as a
+                   checkmark artifact ('[]', '(1', a stray digit). Requiring that ALL of
+                   an item's boxes were located is what makes the veto safe: an item like
+                   'student' (two boxes: 'Student Verification' + 'Certification of Student
+                   Eligibility') where the CHECKED box sits too far from its label to be
+                   located falls into UNKNOWN, not EMPTY, so a genuine check is never
+                   vetoed away.
+      - UNKNOWN  → a box could not be located (punctuation-joined label, displaced box).
+                   Neither asserted nor vetoed; the text pass decides.
+
+    Program designation (HTC/HOME/BOND) is left to the text pass — those boxes sit AFTER
+    the label, a different geometry, and the text pass already handles them. Any failure
+    returns an empty profile so this can never break the pipeline.
     """
-    result = {'program': None, 'income': [], 'conditions': []}
+    result = {'program': None, 'income': [], 'conditions': [],
+              'empty': {'income': [], 'conditions': []}}
     try:
         import pytesseract
         gray = img.convert('L')
@@ -1022,13 +1281,23 @@ def detect_checklist_profile_pixels(img) -> dict:
                  for i in range(len(data['text'])) if data['text'][i].strip()]
         for value, group, keywords in CHECKLIST_ITEMS:
             best = 0.0
+            kw_located = 0
             for kw in keywords:
+                located_this = False
                 for (l, tp, w, h) in _locate_label_boxes(words, kw):
-                    ink = _checkbox_center_ink(px, W, H, l, tp, h)
-                    if ink > best:
-                        best = ink
-            if best >= _CHECKBOX_INK_THRESHOLD and value not in result[group]:
-                result[group].append(value)
+                    located, ink = _checkbox_box_ink(px, W, H, l, tp, h)
+                    if located:
+                        located_this = True
+                        if ink > best:
+                            best = ink
+                if located_this:
+                    kw_located += 1
+            if best >= _CHECKBOX_INK_THRESHOLD:
+                if value not in result[group]:
+                    result[group].append(value)
+            elif kw_located == len(keywords) and kw_located > 0:
+                # every label's box was found and none is checked → confidently EMPTY
+                result['empty'][group].append(value)
     except Exception as e:
         logger.warning('pixel checkbox pass skipped: %s', e)
     return result

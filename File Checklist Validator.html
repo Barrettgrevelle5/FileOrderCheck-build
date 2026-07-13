@@ -909,6 +909,17 @@
     max-width: 460px;
     width: calc(100% - 40px);
     box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+    /* Bound the dialog to the viewport and lay it out as a column so the middle content
+       region can scroll while the header + actions stay pinned and clickable. */
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-scroll {
+    flex: 1 1 auto;
+    min-height: 0;            /* allow the flex child to shrink so overflow can scroll */
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .modal-counter {
     font-size: 12px;
@@ -957,11 +968,30 @@
   .modal-meta {
     font-size: 12px;
     color: var(--gray-400);
-    margin-bottom: 28px;
+    margin-bottom: 4px;
   }
+  /* Amount-disagreement warning (OCR printed amount vs. trusted balance movement). Made
+     deliberately loud so a manager can't miss that an amount needs a second look. */
+  .modal-warn {
+    display: none;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-left: 4px solid #ea580c;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: #9a3412;
+    line-height: 1.45;
+  }
+  .modal-warn.show { display: block; }
+  .modal-warn .warn-head { font-weight: 700; margin-bottom: 3px; }
+  .modal-warn .warn-amts { font-variant-numeric: tabular-nums; }
   .modal-actions {
     display: flex;
     gap: 12px;
+    flex: 0 0 auto;          /* never shrink: the close/decision buttons stay reachable */
+    margin-top: 20px;
   }
   .modal-actions .btn { flex: 1; justify-content: center; font-size: 14px; }
   .btn-known  { background: var(--green); color: white; }
@@ -989,10 +1019,17 @@
     <div class="modal-prog-track">
       <div class="modal-prog-fill" id="bank-modal-prog" style="width:0%"></div>
     </div>
-    <div class="modal-type-badge" id="bank-modal-badge"></div>
-    <div class="modal-amount" id="bank-modal-amount"></div>
-    <div class="modal-desc" id="bank-modal-desc"></div>
-    <div class="modal-meta" id="bank-modal-meta"></div>
+    <!-- Scrollable content region: an unexpectedly long description (or malformed prose that
+         slips past the parser) scrolls HERE instead of growing the dialog past the viewport
+         and pushing the action buttons off-screen. The counter/progress above and the
+         actions below stay fixed and reachable. -->
+    <div class="modal-scroll">
+      <div class="modal-type-badge" id="bank-modal-badge"></div>
+      <div class="modal-amount" id="bank-modal-amount"></div>
+      <div class="modal-warn" id="bank-modal-warn"></div>
+      <div class="modal-desc" id="bank-modal-desc"></div>
+      <div class="modal-meta" id="bank-modal-meta"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-known"  id="bank-btn-known">Known Income</button>
       <button class="btn btn-unknown" id="bank-btn-unknown">Unknown Income</button>
@@ -1123,7 +1160,6 @@
 
       <div class="section-label">Household conditions <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-500)">(select all that apply)</span></div>
       <div class="pill-group" id="conditions-group">
-        <button class="pill" data-group="conditions" data-value="special_needs">Special needs in household</button>
         <button class="pill" data-group="conditions" data-value="non_citizen">Non-citizen / immigration status</button>
         <button class="pill" data-group="conditions" data-value="has_minor_children">Minor children in household</button>
         <button class="pill" data-group="conditions" data-value="student">Student in household</button>
@@ -1500,7 +1536,7 @@ const state = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function normalize(s) {
-  return (s || '').toLowerCase().replace(/[_\-\.]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (s || '').toLowerCase().replace(/[_\-\.\/]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function kwHit(haystackNorm, kwNorm) {
@@ -1611,29 +1647,95 @@ function isRequiredByConditions(doc, profile = state.profile) {
 
 // ─── Bank statement page detection ───────────────────────────────────────────
 // Returns 0-based page indices where bank statement pages are detected, whether
-// or not the questionnaire declared them required. Two signals:
+// or not the questionnaire declared them required. Three signals (OR):
 //   1. A bank statement keyword appears in the title zone (strong match, like
 //      "ACCOUNT STATEMENT" on the header page).
-//   2. A bank transaction table continuation marker appears in the body — the
-//      fragmented column headers that UFCU and similar banks use on pages 2+
-//      ("TRANS EFFECTIVE", "DATE TYPE DESCRIPTION", etc.).
+//   2. A UFCU-specific continuation marker appears in the body ("TRANS EFFECTIVE",
+//      "DATE TYPE DESCRIPTION", …). Kept as a fast path — no regression.
+//   3. STRUCTURAL: any single LINE that looks like a transaction-register column
+//      header. This generalizes past the UFCU literals so other banks (e.g. TDECU,
+//      whose header is "Date Description Withdrawals Deposits Balance" and which
+//      never says "bank") are still recognized. See isRegisterHeaderLine.
 // Checklist pages are skipped (they list every doc by name and would false-match).
+// Max number of consecutive UNDETECTED pages to fill between two detected statement pages.
+const BANK_GAP_FILL_MAX = 2;
+
 function findBankStatementPages(pages) {
   const bankKws = ['bank statement', 'account statement', 'bank verif', 'bank stmnt', 'bank stmt'];
   const contMarkers = ['trans effective', 'date type description', 'date date type'];
-  const indices = [];
+  const detected = [];
   for (let i = 0; i < pages.length; i++) {
     if (isChecklistPage(pages[i])) continue;
     const titleNorm = normalize(pages[i].substring(0, TITLE_ZONE));
     const bodyNorm  = normalize(pages[i]);
     const isBankHeader   = bankKws.some(kw => kwHit(titleNorm, normalize(kw)));
     const isContinuation = contMarkers.some(m  => bodyNorm.includes(normalize(m)));
-    if (isBankHeader || isContinuation) indices.push(i);
+    const hasRegister    = pages[i].split('\n').some(isRegisterHeaderLine);
+    if (isBankHeader || isContinuation || hasRegister) detected.push(i);
+  }
+  // Fill small INTERIOR gaps between detected pages. A bank statement is a contiguous
+  // scanned run, so a page sitting BETWEEN two detected statement pages that failed
+  // detection only because its column header OCR'd raggedly (a real case file: "DATE TYPE
+  // DESCRIPTION AMOUNT BALANCE" split across lines, so no single line is a register header)
+  // is a continuation — its transactions (incl. a real deposit) must not be
+  // silently dropped. Only fill short gaps and never a checklist/divider page.
+  const indices = [];
+  for (let k = 0; k < detected.length; k++) {
+    indices.push(detected[k]);
+    if (k + 1 < detected.length) {
+      const a = detected[k], b = detected[k + 1];
+      if (b - a > 1 && (b - a - 1) <= BANK_GAP_FILL_MAX) {
+        for (let j = a + 1; j < b; j++) {
+          if (!isChecklistPage(pages[j])) indices.push(j);
+        }
+      }
+    }
   }
   return indices;
 }
 
+// Single source of truth for "the Bank Statement / Bank Verification requirement is
+// satisfied by this file". True when EITHER an accepted Verification document matched by
+// keyword (bankMatched) OR bank-statement pages were detected (bankPageCount > 0) — the
+// exact same page evidence that enables the Review Transactions workflow. Used by BOTH the
+// missing-document output and the review availability so the two can never disagree (the
+// bug where a review is generated while the checklist still says the statement is missing).
+// A failed/empty detection (zero pages, no keyword) does NOT satisfy it.
+function bankDocumentPresent(bankMatched, bankPageCount) {
+  return !!bankMatched || (bankPageCount || 0) > 0;
+}
+
+// True when one OCR line is a transaction-register column header. Tokenized (so short
+// column words match as whole tokens, not substrings), the line must contain 'balance'
+// AND >=2 of the column names AND at least one money-movement column. It must ALSO name
+// a 'description' column: without that, a LOAN-schedule header ("Loan Number | Date of
+// Loan | Original Amount | Current Balance | …") satisfies balance + {date,amount} +
+// movement(amount) and false-selects (a real case file's loan page). Every genuine register in
+// the real files (TDECU, UFCU) names Description; the loan table and the savings-accrual
+// sub-table ("Description Start Balance Earned … End Balance", which also fails the
+// >=2-column count) do not. (tests/bank_selection_regression.test.js)
+function isRegisterHeaderLine(line) {
+  const toks = new Set(normalize(line).split(' '));
+  if (!toks.has('balance')) return false;
+  const COLS = ['description', 'amount', 'withdrawals', 'withdrawal', 'deposits',
+                'deposit', 'credit', 'debit', 'type', 'date'];
+  if (COLS.filter(c => toks.has(c)).length < 2) return false;
+  const MOVEMENT = ['withdrawals', 'withdrawal', 'deposits', 'deposit', 'amount', 'credit', 'debit'];
+  if (!MOVEMENT.some(m => toks.has(m))) return false;
+  return toks.has('description');
+}
+
 // ─── Bank statement review modal ─────────────────────────────────────────────
+
+// Read a File into a bare base64 string (no data: prefix) for JSON transport.
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 async function openBankReviewModal() {
   const btn = document.getElementById('btn-review-bank');
@@ -1644,12 +1746,17 @@ async function openBankReviewModal() {
     text: state.pdfPages[i] || '',
   }));
 
+  // The bank parser re-OCRs the selected pages geometrically (image_to_data), which
+  // needs the page images — so send the PDF itself (base64) alongside the page list.
+  // The shared PSM-3 text still rides along in pageData for the debug dump/log only.
+  const pdfB64 = state.pdfFile ? await fileToBase64(state.pdfFile) : null;
+
   let transactions = [];
   try {
     const res = await fetch('/api/analyze-bank', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages: pageData }),
+      body: JSON.stringify({ pages: pageData, pdf: pdfB64 }),
     });
     const data = await res.json();
     transactions = data.transactions || [];
@@ -1706,9 +1813,31 @@ function renderBankReviewStep(idx) {
     amountEl.style.color = 'var(--gray-400)';
   }
 
+  // Amount-disagreement warning: when the OCR'd printed amount and the trusted balance
+  // movement disagree, the server sends BOTH (amount + amount_alt). Show them side by side
+  // so the manager verifies against the statement rather than trusting a possibly-misread
+  // figure (e.g. a $50.00 deposit OCR'd as $50.06). Never present the shown amount as final.
+  const warnEl = document.getElementById('bank-modal-warn');
+  const fmtAmt = v => `$${Math.abs(Number(v)).toFixed(2)}`;
+  if (tx.amount_alt != null && tx.amount != null) {
+    const corrected = tx.flag && tx.flag.indexOf('corrected') !== -1;
+    warnEl.innerHTML =
+      `<div class="warn-head">⚠ Check this amount against the statement</div>` +
+      `<div class="warn-amts">Shown amount: <strong>${fmtAmt(tx.amount)}</strong>` +
+      `  ·  ${corrected ? 'OCR read' : 'Balance movement'}: <strong>${fmtAmt(tx.amount_alt)}</strong></div>`;
+    warnEl.classList.add('show');
+  } else if (tx.flag) {
+    warnEl.innerHTML = `<div class="warn-head">⚠ Verify this amount against the statement</div>`;
+    warnEl.classList.add('show');
+  } else {
+    warnEl.innerHTML = '';
+    warnEl.classList.remove('show');
+  }
+
   document.getElementById('bank-modal-desc').textContent = tx.description;
+  const pageNum = tx.page_number != null ? tx.page_number : (tx.page + 1);
   document.getElementById('bank-modal-meta').textContent =
-    (tx.date ? `Date: ${tx.date}  ·  ` : '') + `PDF page ${tx.page}`;
+    (tx.date ? `Date: ${tx.date}  ·  ` : '') + `PDF page ${pageNum}`;
 
   // Replace buttons to drop stale event listeners
   ['bank-btn-known', 'bank-btn-unknown'].forEach(id => {
@@ -1742,10 +1871,16 @@ function renderBankSummaryCard() {
 
   const txRow = (r, icon, iconColor) => {
     const tx = r.transaction;
-    const meta = [tx.date, tx.amount, `page ${tx.page}`].filter(Boolean).join(' · ');
+    const pageNum = tx.page_number != null ? tx.page_number : (tx.page + 1);
+    const amtStr = tx.amount != null ? `$${Math.abs(Number(tx.amount)).toFixed(2)}` : null;
+    const meta = [tx.date, amtStr, `page ${pageNum}`].filter(Boolean).join(' · ');
+    const warn = tx.flag
+      ? `<div class="matched-file" style="color:#c2410c;">⚠ verify amount against statement${
+           tx.amount_alt != null ? ` (OCR/balance: $${Math.abs(Number(tx.amount_alt)).toFixed(2)})` : ''}</div>`
+      : '';
     return `<div class="checklist-item">
       <div class="item-status" style="color:${iconColor};">${icon}</div>
-      <div class="item-name">${tx.description}<div class="matched-file">${meta}</div></div>
+      <div class="item-name">${tx.description}<div class="matched-file">${meta}</div>${warn}</div>
     </div>`;
   };
 
@@ -1892,7 +2027,10 @@ const CHECKLIST_FLAGS = new Set([
   'employed','school_employee','self_employed','new_business','gig_income',
   'social_security','pension','section8','zero_income','non_employed',
   'unemployment','tips','child_support','recurring_gift','rental_income',
-  'special_needs','live_in_aide','marital_separation','student',
+  // special_needs is NOT here: the Special Needs Certification is now always required
+  // (BASELINE_DOCS), so auditing it against the checkbox would flag every file whose
+  // manager left that box unchecked — pure noise. It is detected as present/missing directly.
+  'live_in_aide','marital_separation','student',
   'has_minor_children','homeowner','home_listing',
   'new_court_order','assets_under_50k','assets_over_50k',
 ]);
@@ -1968,8 +2106,11 @@ function auditChecklistVsQuestionnaire() {
 const DOC_BY_ID = Object.fromEntries(DOCS.map(d => [d.id, d]));
 
 // SECTION 0 — baseline docs, always required regardless of answers.
+// special_needs (2026-07-13): the Special Needs Certification is always required and always
+// searched for — no longer gated on a questionnaire answer (the old q2_5 was removed).
 const BASELINE_DOCS = ['application','supp_app','household_cert','tic',
-  'release_consent','rights','income_calc','tenant_selection_plan','student_eligibility'];
+  'release_consent','rights','income_calc','tenant_selection_plan','student_eligibility',
+  'special_needs'];
 
 const Q_STOP = Symbol('q-stop');
 function boolQ(section, text) { return { section, text, type: 'boolean' }; }
@@ -1985,6 +2126,10 @@ function walkQuestionnaire(qa) {
   // apply at once and each contributes its own document requirements independently.
   const programs = new Set(Array.isArray(qa.q1_1) ? qa.q1_1 : []);
   let bankStatementsProvided = false;
+  // Single centralized asset classification: 'over' | 'under' | 'unknown'. Over and under
+  // are two ends of ONE decision (vs. ASSET_SELF_CERT_THRESHOLD), never both — so exactly
+  // one asset doc is ever required (bank_statement for over, asset_cert for under).
+  let assetStatus = 'unknown';
 
   const yes = v => v === 'yes' || v === 'maybe';   // conservative default: Not sure ⇒ require
   const ask = (key, q) => {
@@ -2018,8 +2163,10 @@ function walkQuestionnaire(qa) {
       if (yes(v)) addF(v,'marital_sep'); }
     { const v = ask('q2_4', boolQ('Household composition','Is there a live-in care attendant (a non-household aide who lives in the unit)?'));
       if (yes(v)) addF(v,'live_in_aide_affidavit','live_in_aide_verif'); }
-    { const v = ask('q2_5', boolQ('Household composition','Does the household qualify under a disability / special-needs set-aside, or is special-needs status being claimed?'));
-      if (yes(v)) addF(v,'special_needs'); }
+    // Special Needs is no longer a questionnaire question (2026-07-13, Barrett): the Special
+    // Needs Certification is ALWAYS required and always searched for, regardless of household
+    // composition or any answer. It is in BASELINE_DOCS; the old q2_5 gate is removed so a
+    // legacy 'q2_5' answer (if any) can no longer disable it.
     { const v = ask('q2_6', boolQ('Household composition','Is any household member a non-U.S. citizen / non-eligible immigration status?'));
       if (yes(v)) addF(v,'immigration_docs'); }
 
@@ -2079,7 +2226,11 @@ function walkQuestionnaire(qa) {
         // Previously asked a follow-up "is there a court order" to decide whether
         // payment_history/court_order applied; that branch is removed.
         const cs  = ask('q4_8' + t, boolQ(who,'Does this member receive child support or alimony?'));
-        if (yes(cs)) addF(cs,'child_support_cert','payment_history','court_order');
+        // Receiving child support/alimony requires the Child Support/Alimony Certification and
+        // its payment history — but NOT a Court Order (2026-07-13, Barrett). Child-support
+        // income alone is not proof a court order exists; many arrangements are informal. A
+        // Court Order is required only from an explicit court/custody answer (q2_2a below).
+        if (yes(cs)) addF(cs,'child_support_cert','payment_history');
         const gf = ask('q4_9' + t, boolQ(who,'Does this member receive recurring monetary gifts / regular help from outside the household?')); if (yes(gf)) addF(gf,'recurring_gift');
       }
 
@@ -2101,6 +2252,7 @@ function walkQuestionnaire(qa) {
       // scanned file — see the bank-stmt-card mismatch check in renderResults.
       bankStatementsProvided = yes(ask('q5_0b', boolQ('Assets','Were bank statements included in the file for this household?')));
       if (bondAssetVerif || yes(over)) {                // BOND, or > threshold → third-party docs, no self-cert
+        assetStatus = 'over';
         add('bank_statement');
         if (!bondAssetVerif && over === 'maybe') uncertain.add('bank_statement');
         ask('q5_1', boolQ('Assets','Does the household have any bank / financial accounts (checking, savings, cash beyond de minimis)?')); // informational — covered by bank_statement
@@ -2108,15 +2260,27 @@ function walkQuestionnaire(qa) {
         if (yes(rp)) { addF(rp,'homeowner_docs','appraisal');
           const mg = ask('q5_2a', boolQ('Assets','Is the property mortgaged?'));                  if (yes(mg)) addF(mg,'mortgage');
           const ls = ask('q5_2b', boolQ('Assets','Is the property currently listed for sale?'));   if (yes(ls)) addF(ls,'listing_contract');
+          // Rental income (→ Rental Payment Worksheet) is declared ONLY here, from an explicit
+          // "is the property rented out?" answer — never inferred from keywords, bank
+          // descriptions, or a checklist checkbox read.
           const rt = ask('q5_2c', boolQ('Assets','Is the property rented out (produces rental income)?')); if (yes(rt)) addF(rt,'rental_worksheet'); }
       } else {
+        assetStatus = 'under';
         add('asset_cert');                              // ≤ threshold, no BOND → self-cert only; tree says skip Q5.1/Q5.2 → Q5.3
       }
       ask('q5_3', boolQ('Assets','Has any member disposed of an asset for less than fair-market value in the last 2 years?')); // no doc in the 44-list — audit note only
     }
   } catch (e) { if (e !== Q_STOP) throw e; }
 
-  return { required, uncertain, visited, members, programs, pending, complete: pending === null, bankStatementsProvided };
+  // Defensive invariant: assets are one either/or decision — the two asset docs are
+  // mutually exclusive. (walkQuestionnaire already adds exactly one; this guards against a
+  // future edit or a stale answer ever leaving both in the set.)
+  if (required.has('bank_statement') && required.has('asset_cert')) {
+    required.delete(assetStatus === 'under' ? 'bank_statement' : 'asset_cert');
+  }
+
+  return { required, uncertain, visited, members, programs, pending,
+           complete: pending === null, bankStatementsProvided, assetStatus };
 }
 
 // ─── Questionnaire rendering ──────────────────────────────────────────────────
@@ -2375,6 +2539,15 @@ async function processUpload(file) {
   state.pdfName = file.name;
   state.pdfPages = [];
   state.checklistProfile = null;
+  // Reset ALL per-file derived state so a previously processed file's checklist reads,
+  // detected bank pages, or transaction review can never leak into this file's result.
+  // (required-ness stays owned by the questionnaire; the pill profile is re-derived from
+  // THIS file's checklist read below.)
+  state.profile = { program: null, income: new Set(), conditions: new Set() };
+  state.bankStatementPages = [];
+  state.bankTransactions = [];
+  state.bankReview = [];
+  document.querySelectorAll('.pill.selected').forEach(p => p.classList.remove('selected'));
   document.getElementById('btn-to-step2').disabled = true;
   document.getElementById('file-count-display').innerHTML = '';
 
@@ -2490,6 +2663,21 @@ function renderResults() {
   // Detect bank statement pages for the review workflow (runs on every render;
   // doesn't depend on required-ness — fires any time bank pages are in the PDF).
   state.bankStatementPages = findBankStatementPages(pages);
+
+  // Single source of truth for "the Bank Statement / Bank Verification is present": the
+  // bank_statement requirement is satisfied by EITHER a matchDoc keyword hit OR detected
+  // bank-statement pages (the same evidence that drives the Review Transactions workflow).
+  // Without this the two disagree — the review is generated from the file while the final
+  // checklist still reports the Bank Statement as missing, because the statement's own
+  // header ("ACCOUNT STATEMENT") doesn't always hit the matchDoc keywords. An accepted
+  // Verification (matchDoc) OR detected statement pages both satisfy the one requirement.
+  const bankEval = evaluated.find(d => d.id === 'bank_statement');
+  if (bankEval && bankDocumentPresent(bankEval.matchedKw, state.bankStatementPages.length)
+      && bankEval.foundPage === null) {
+    bankEval.foundPage = state.bankStatementPages[0] + 1;   // 1-based display page
+    bankEval.matchedKw = 'bank statement pages detected';
+    bankEval.weakMatch = false;
+  }
 
   // Order check: each required+found doc must appear after its direct predecessor.
   // A doc is only flagged if it appears before the specific doc that should come
